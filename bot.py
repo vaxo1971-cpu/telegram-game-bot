@@ -20,7 +20,16 @@ TARIFFS = {
 
 @bot.message_handler(commands=['start'])
 def start(message):
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
+
+    markup.row("🎰 Play", "🃏 Games")
+    markup.row("💰 Buy Access", "⚙️ Settings")
+
+    bot.send_message(
+        message.chat.id,
+        "🎰 Ancient Card Games\n\nВыбери действие:",
+        reply_markup=markup
+    )    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add("🎮 Играть", "💳 Купить доступ")
 
     bot.send_message(
