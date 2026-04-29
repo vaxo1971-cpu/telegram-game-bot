@@ -41,8 +41,10 @@ def play_callback(call):
     code = generate_code()
     url = f"{GAME_URL}/?code={code}"
 
-    bot.send_message(
+       bot.send_message(
         call.message.chat.id,
         f"🎟 Code:\n{code}\n👉 {url}"
     )
+
+
 bot.infinity_polling()
