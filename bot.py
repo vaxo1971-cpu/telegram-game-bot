@@ -15,100 +15,113 @@ bot = telebot.TeleBot(TOKEN)
 
 def load_access():
     if os.path.exists(ACCESS_FILE):
-        with open(ACCESS_FILE, "r") as f:
+        with open(ACCESS_FILE, "r", encoding="utf-8") as f:
             return json.load(f)
     return {}
 
 
 def save_access(data):
-    with open(ACCESS_FILE, "w") as f:
-        json.dump(data, f)
+    with open(ACCESS_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
 
 
 user_access = load_access()
 
 
 def generate_code():
-    return "LS-" + ''.join(
-        random.choices(string.ascii_uppercase + string.digits, k=6)
-    )
+    return "LS-" + "".join(random.choices(string.ascii_uppercase + string.digits, k=6))
 
 
 def main_menu():
     markup = types.InlineKeyboardMarkup()
     markup.row(
-        types.InlineKeyboardButton("🎰 Play", callback_data="play"),
-        types.InlineKeyboardButton("🃏 Games", callback_data="games")
+        types.InlineKeyboardButton("🎮 Играть / Play / თამაში", callback_data="play")
     )
     markup.row(
-        types.InlineKeyboardButton("💰 Buy Access", callback_data="buy"),
-        types.InlineKeyboardButton("⚙️ Settings", callback_data="settings")
+        types.InlineKeyboardButton("🃏 Игры / Games / თამაშები", callback_data="games")
+    )
+    markup.row(
+        types.InlineKeyboardButton("💰 Купить доступ / Buy Access / წვდომის ყიდვა", callback_data="buy")
+    )
+    markup.row(
+        types.InlineKeyboardButton("⚙️ Настройки / Settings / პარამეტრები", callback_data="settings")
     )
     return markup
+
+
+def buy_keyboard():
+    markup = types.InlineKeyboardMarkup()
+    markup.row(types.InlineKeyboardButton("⏱ 1 час / 1 hour / 1 საათი — 50⭐", callback_data="pay_1"))
+    markup.row(types.InlineKeyboardButton("📅 24 часа / 24 hours / 24 საათი — 150⭐", callback_data="pay_24"))
+    markup.row(types.InlineKeyboardButton("🔥 48 часов / 48 hours / 48 საათი — 300⭐", callback_data="pay_48"))
+    markup.row(types.InlineKeyboardButton("⬅️ Назад / Back / უკან", callback_data="back"))
+    return markup
+
+
+START_TEXT = """🏛 *Ancient Card Games*
+
+🇷🇺 Добро пожаловать в мир древних карточных игр.
+🇬🇧 Welcome to the world of ancient card games.
+🇬🇪 კეთილი იყოს თქვენი მობრძანება უძველესი კარტის თამაშების სამყაროში.
+
+🎴 Poker
+⚔️ Emperor’s 21
+
+💰 Доступ / Access / წვდომა:
+⏱ 1 час / 1 hour / 1 საათი — 50⭐
+📅 24 часа / 24 hours / 24 საათი — 150⭐
+🔥 48 часов / 48 hours / 48 საათი — 300⭐
+
+👇 Выберите действие / Choose action / აირჩიეთ მოქმედება:
+"""
 
 
 @bot.message_handler(commands=["start"])
 def start(message):
     bot.send_message(
         message.chat.id,
-        "🏛 Ancient Card Games\n\nВыбери действие:",
+        START_TEXT,
+        parse_mode="Markdown",
         reply_markup=main_menu()
     )
 
 
-@bot.callback_query_handler(func=lambda call: call.data == "play")
-def play_callback(call):
-    user_id = str(call.from_user.id)
-    now = int(time.time())
-
-    if user_id not in user_access or user_access[user_id] < now:
-        bot.answer_callback_query(call.id, "Сначала купи доступ", show_alert=True)
-        bot.send_message(
-            call.message.chat.id,
-            "🔒 Доступ не активен.\nНажми 💰 Buy Access.",
-            reply_markup=main_menu()
-        )
-        return
-
-    code = generate_code()
-    url = f"{GAME_URL}/?code={code}&user={user_id}"
-
+@bot.callback_query_handler(func=lambda call: call.data == "back")
+def back_callback(call):
     bot.send_message(
         call.message.chat.id,
-        f"🎟 Code:\n{code}\n👉 {url}"
+        START_TEXT,
+        parse_mode="Markdown",
+        reply_markup=main_menu()
     )
 
 
 @bot.callback_query_handler(func=lambda call: call.data == "buy")
 def buy_menu(call):
-    markup = types.InlineKeyboardMarkup()
-    markup.row(types.InlineKeyboardButton("⏱ 1 час — 50⭐", callback_data="pay_1"))
-    markup.row(types.InlineKeyboardButton("📅 24 часа — 150⭐", callback_data="pay_24"))
-    markup.row(types.InlineKeyboardButton("🔥 48 часов — 300⭐", callback_data="pay_48"))
-    markup.row(types.InlineKeyboardButton("⬅️ Назад", callback_data="back"))
-
     bot.send_message(
         call.message.chat.id,
-        "💰 Выбери доступ:",
-        reply_markup=markup
+        """💰 Выберите доступ:
+💰 Choose access:
+💰 აირჩიეთ წვდომა:""",
+        reply_markup=buy_keyboard()
     )
 
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("pay_"))
 def send_stars_invoice(call):
     if call.data == "pay_1":
-        title = "Access 1 hour"
-        description = "Доступ к игре на 1 час"
+        title = "Ancient Card Games — 1 hour"
+        description = "Доступ на 1 час / Access for 1 hour / წვდომა 1 საათით"
         amount = 50
         payload = "access_1"
     elif call.data == "pay_24":
-        title = "Access 24 hours"
-        description = "Доступ к игре на 24 часа"
+        title = "Ancient Card Games — 24 hours"
+        description = "Доступ на 24 часа / Access for 24 hours / წვდომა 24 საათით"
         amount = 150
         payload = "access_24"
     else:
-        title = "Access 48 hours"
-        description = "Доступ к игре на 48 часов"
+        title = "Ancient Card Games — 48 hours"
+        description = "Доступ на 48 часов / Access for 48 hours / წვდომა 48 საათით"
         amount = 300
         payload = "access_48"
 
@@ -139,22 +152,62 @@ def successful_payment(message):
 
     if payload == "access_1":
         user_access[user_id] = now + 3600
-        text = "✅ Оплата прошла.\nДоступ активирован на 1 час."
+        text = """✅ Оплата прошла. Доступ активирован на 1 час.
+✅ Payment successful. Access activated for 1 hour.
+✅ გადახდა წარმატებულია. წვდომა გააქტიურდა 1 საათით."""
     elif payload == "access_24":
         user_access[user_id] = now + 24 * 3600
-        text = "✅ Оплата прошла.\nДоступ активирован на 24 часа."
+        text = """✅ Оплата прошла. Доступ активирован на 24 часа.
+✅ Payment successful. Access activated for 24 hours.
+✅ გადახდა წარმატებულია. წვდომა გააქტიურდა 24 საათით."""
     elif payload == "access_48":
         user_access[user_id] = now + 48 * 3600
-        text = "✅ Оплата прошла.\nДоступ активирован на 48 часов."
+        text = """✅ Оплата прошла. Доступ активирован на 48 часов.
+✅ Payment successful. Access activated for 48 hours.
+✅ გადახდა წარმატებულია. წვდომა გააქტიურდა 48 საათით."""
     else:
-        text = "Оплата получена, но тариф не найден."
+        text = """✅ Оплата получена, но тариф не найден.
+✅ Payment received, but plan not found.
+✅ გადახდა მიღებულია, მაგრამ ტარიფი ვერ მოიძებნა."""
 
     save_access(user_access)
 
     bot.send_message(
         message.chat.id,
-        text + "\n\nТеперь нажми 🎰 Play.",
+        text + "\n\n🎮 Теперь нажмите Играть / Now press Play / ახლა დააჭირეთ თამაში.",
         reply_markup=main_menu()
+    )
+
+
+@bot.callback_query_handler(func=lambda call: call.data == "play")
+def play_callback(call):
+    user_id = str(call.from_user.id)
+    now = int(time.time())
+
+    if user_id not in user_access or user_access[user_id] < now:
+        bot.answer_callback_query(call.id, "Сначала купите доступ / Buy access first / ჯერ შეიძინეთ წვდომა", show_alert=True)
+        bot.send_message(
+            call.message.chat.id,
+            """🔒 Доступ не активен.
+🔒 Access is not active.
+🔒 წვდომა არ არის აქტიური.
+
+Нажмите 💰 Купить доступ / Press 💰 Buy Access / დააჭირეთ 💰 წვდომის ყიდვა.""",
+            reply_markup=main_menu()
+        )
+        return
+
+    code = generate_code()
+    url = f"{GAME_URL}/?code={code}&user={user_id}"
+
+    bot.send_message(
+        call.message.chat.id,
+        f"""🎟 Code / Код / კოდი:
+`{code}`
+
+🎮 Game:
+{url}""",
+        parse_mode="Markdown"
     )
 
 
@@ -162,7 +215,14 @@ def successful_payment(message):
 def games_callback(call):
     bot.send_message(
         call.message.chat.id,
-        "🃏 Игры доступны после покупки доступа.",
+        """🃏 Available games / Доступные игры / ხელმისაწვდომი თამაშები:
+
+🎴 Poker
+⚔️ Emperor’s 21
+
+Для игры нужен активный доступ.
+Active access is required to play.
+თამაშისთვის საჭიროა აქტიური წვდომა.""",
         reply_markup=main_menu()
     )
 
@@ -176,22 +236,23 @@ def settings_callback(call):
         left = user_access[user_id] - now
         hours = left // 3600
         minutes = (left % 3600) // 60
-        text = f"⚙️ Доступ активен.\nОсталось: {hours} ч. {minutes} мин."
+
+        text = f"""⚙️ Доступ активен.
+Осталось: {hours} ч. {minutes} мин.
+
+⚙️ Access is active.
+Time left: {hours} h. {minutes} min.
+
+⚙️ წვდომა აქტიურია.
+დარჩენილია: {hours} სთ. {minutes} წთ."""
     else:
-        text = "⚙️ Доступ не активен."
+        text = """⚙️ Доступ не активен.
+⚙️ Access is not active.
+⚙️ წვდომა არ არის აქტიური."""
 
     bot.send_message(
         call.message.chat.id,
         text,
-        reply_markup=main_menu()
-    )
-
-
-@bot.callback_query_handler(func=lambda call: call.data == "back")
-def back_callback(call):
-    bot.send_message(
-        call.message.chat.id,
-        "🏛 Ancient Card Games\n\nВыбери действие:",
         reply_markup=main_menu()
     )
 
