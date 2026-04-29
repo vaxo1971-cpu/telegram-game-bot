@@ -45,3 +45,4 @@ def play_callback(call):
         call.message.chat.id,
         f"🎟 Code:\n{code}\n👉 {url}"
     )
+bot.infinity_polling()
