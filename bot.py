@@ -257,4 +257,10 @@ Time left: {hours} h. {minutes} min.
     )
 
 
-bot.infinity_polling()
+while True:
+    try:
+        print("Бот запущен...")
+        bot.polling(none_stop=True, interval=0, timeout=20)
+    except Exception as e:
+        print(f"Ошибка: {e}")
+        time.sleep(3)
