@@ -6,7 +6,7 @@ import time
 import json
 import os
 
-TOKEN = "8250941489:AAEUlIUmBVMF2yr6uq-b9qmrpmnmLw0gUcg"
+TOKEN = "8250941489:AAGq74NQ2anLdiQ8-t1SOmH2Qusr4c5kyZo"
 GAME_URL = "https://guileless-toffee-fec890.netlify.app"
 ACCESS_FILE = "access.json"
 
