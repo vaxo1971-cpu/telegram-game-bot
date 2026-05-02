@@ -22,6 +22,7 @@ PRICES = {
 
 bot = telebot.TeleBot(TOKEN)
 
+bot.remove_webhook()
 
 def load_json(path, default):
     if os.path.exists(path):
