@@ -9,53 +9,88 @@ import os
 TOKEN = "8250941489:AAGq74NQ2anLdiQ8-t1SOmH2Qusr4c5kyZo"
 GAME_URL = "https://guileless-toffee-fec890.netlify.app"
 ACCESS_FILE = "access.json"
+STATS_FILE = "stats.json"
 
 bot = telebot.TeleBot(TOKEN)
 
 
 def load_access():
     if os.path.exists(ACCESS_FILE):
-        with open(ACCESS_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
+        try:
+            with open(ACCESS_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
     return {}
 
 
 def save_access(data):
-    with open(ACCESS_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+    try:
+        with open(ACCESS_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
 
 
-user_access = load_access()
+def load_stats():
+    data = {}
+    if os.path.exists(STATS_FILE):
+        try:
+            with open(STATS_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception:
+            pass
+
+    data.setdefault("started_users", [])
+    data.setdefault("play_users", [])
+    data.setdefault("play_clicks", 0)
+    data.setdefault("payments", 0)
+    data.setdefault("paid_users", [])
+    data.setdefault("paid_amount", 0)
+    data.setdefault("codes", 0)
+    return data
+
+
+def save_stats():
+    try:
+        with open(STATS_FILE, "w", encoding="utf-8") as f:
+            json.dump(stats, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
+
+def track_started(user_id: int):
+    if user_id not in stats["started_users"]:
+        stats["started_users"].append(int(user_id))
+        save_stats()
+
+
+def track_play(user_id: int):
+    stats["play_clicks"] += 1
+    stats["codes"] += 1
+    if user_id not in stats["play_users"]:
+        stats["play_users"].append(int(user_id))
+    save_stats()
+
+
+def track_payment(user_id: int, amount: int | None):
+    stats["payments"] += 1
+    if amount is not None:
+        try:
+            stats["paid_amount"] += int(amount)
+        except Exception:
+            pass
+    if user_id not in stats["paid_users"]:
+        stats["paid_users"].append(int(user_id))
+    save_stats()
 
 
 def generate_code():
     return "LS-" + "".join(random.choices(string.ascii_uppercase + string.digits, k=6))
 
 
-def main_menu():
-    markup = types.InlineKeyboardMarkup()
-    markup.row(
-        types.InlineKeyboardButton("🎮 Играть / Play / თამაში", callback_data="play")
-    )
-    markup.row(
-        types.InlineKeyboardButton("🃏 Игры / Games / თამაშები", callback_data="games")
-    )
-    markup.row(
-        types.InlineKeyboardButton("💰 Купить доступ / Buy Access / წვდომის ყიდვა", callback_data="buy")
-    )
-    markup.row(
-        types.InlineKeyboardButton("⚙️ Настройки / Settings / პარამეტრები", callback_data="settings")
-    )
-    return markup
-
-
-def buy_keyboard():
-    markup = types.InlineKeyboardMarkup()
-    markup.row(types.InlineKeyboardButton("⏱ 1 час / 1 hour / 1 საათი — 50⭐", callback_data="pay_1"))
-    markup.row(types.InlineKeyboardButton("📅 24 часа / 24 hours / 24 საათი — 150⭐", callback_data="pay_24"))
-    markup.row(types.InlineKeyboardButton("🔥 48 часов / 48 hours / 48 საათი — 300⭐", callback_data="pay_48"))
-    markup.row(types.InlineKeyboardButton("⬅️ Назад / Back / უკან", callback_data="back"))
-    return markup
+user_access = load_access()
+stats = load_stats()
 
 
 START_TEXT = """🏛 *Ancient Card Games*
@@ -78,12 +113,68 @@ START_TEXT = """🏛 *Ancient Card Games*
 
 @bot.message_handler(commands=["start"])
 def start(message):
+    track_started(message.from_user.id)
     bot.send_message(
         message.chat.id,
         START_TEXT,
         parse_mode="Markdown",
-        reply_markup=main_menu()
+        reply_markup=main_menu(),
     )
+
+
+@bot.message_handler(commands=["stats", "stat"])
+def stats_cmd(message):
+    now = int(time.time())
+    active_access = sum(1 for v in user_access.values() if v > now)
+    text = (
+        "📊 Stats / Статистика / სტატისტიკა:\n\n"
+        f"👤 /start unique: {len(set(stats['started_users']))}\n"
+        f"🎮 Play unique: {len(set(stats['play_users']))}\n"
+        f"⬇️ Play clicks: {stats['play_clicks']}\n"
+        f"🎟 Codes: {stats['codes']}\n"
+        f"💰 Payments count: {stats['payments']}\n"
+        f"💸 Paid users: {len(set(stats['paid_users']))}\n"
+        f"⭐ Paid amount (stars): {stats['paid_amount']}\n"
+        f"👥 Users with access records (all): {len(user_access)}\n"
+        f"🔓 Active access now: {active_access}\n"
+    )
+    bot.send_message(message.chat.id, text)
+
+
+def main_menu():
+    markup = types.InlineKeyboardMarkup()
+    markup.row(types.InlineKeyboardButton("🎮 Играть / Play / თამაში", callback_data="play"))
+    markup.row(types.InlineKeyboardButton("🃏 Игры / Games / თამაშები", callback_data="games"))
+    markup.row(
+        types.InlineKeyboardButton(
+            "💰 Купить доступ / Buy Access / წვდომის ყიდვა", callback_data="buy"
+        )
+    )
+    markup.row(
+        types.InlineKeyboardButton("⚙️ Настройки / Settings / პარამეტრები", callback_data="settings")
+    )
+    return markup
+
+
+def buy_keyboard():
+    markup = types.InlineKeyboardMarkup()
+    markup.row(
+        types.InlineKeyboardButton(
+            "⏱ 1 час / 1 hour / 1 საათი — 50⭐", callback_data="pay_1"
+        )
+    )
+    markup.row(
+        types.InlineKeyboardButton(
+            "📅 24 часа / 24 hours / 24 საათი — 150⭐", callback_data="pay_24"
+        )
+    )
+    markup.row(
+        types.InlineKeyboardButton(
+            "🔥 48 часов / 48 hours / 48 საათი — 300⭐", callback_data="pay_48"
+        )
+    )
+    markup.row(types.InlineKeyboardButton("⬅️ Назад / Back / უკან", callback_data="back"))
+    return markup
 
 
 @bot.callback_query_handler(func=lambda call: call.data == "back")
@@ -92,7 +183,7 @@ def back_callback(call):
         call.message.chat.id,
         START_TEXT,
         parse_mode="Markdown",
-        reply_markup=main_menu()
+        reply_markup=main_menu(),
     )
 
 
@@ -103,7 +194,7 @@ def buy_menu(call):
         """💰 Выберите доступ:
 💰 Choose access:
 💰 აირჩიეთ წვდომა:""",
-        reply_markup=buy_keyboard()
+        reply_markup=buy_keyboard(),
     )
 
 
@@ -135,7 +226,7 @@ def send_stars_invoice(call):
         provider_token="",
         currency="XTR",
         prices=prices,
-        start_parameter=payload
+        start_parameter=payload,
     )
 
 
@@ -148,6 +239,9 @@ def pre_checkout(pre_checkout_query):
 def successful_payment(message):
     user_id = str(message.from_user.id)
     payload = message.successful_payment.invoice_payload
+    amount = getattr(message.successful_payment, "total_amount", None)
+    track_payment(message.from_user.id, amount=amount)
+
     now = int(time.time())
 
     if payload == "access_1":
@@ -175,7 +269,7 @@ def successful_payment(message):
     bot.send_message(
         message.chat.id,
         text + "\n\n🎮 Теперь нажмите Играть / Now press Play / ახლა დააჭირეთ თამაში.",
-        reply_markup=main_menu()
+        reply_markup=main_menu(),
     )
 
 
@@ -185,7 +279,11 @@ def play_callback(call):
     now = int(time.time())
 
     if user_id not in user_access or user_access[user_id] < now:
-        bot.answer_callback_query(call.id, "Сначала купите доступ / Buy access first / ჯერ შეიძინეთ წვდომა", show_alert=True)
+        bot.answer_callback_query(
+            call.id,
+            "Сначала купите доступ / Buy access first / ჯერ შეიძინეთ წვდომა",
+            show_alert=True,
+        )
         bot.send_message(
             call.message.chat.id,
             """🔒 Доступ не активен.
@@ -193,9 +291,11 @@ def play_callback(call):
 🔒 წვდომა არ არის აქტიური.
 
 Нажмите 💰 Купить доступ / Press 💰 Buy Access / დააჭირეთ 💰 წვდომის ყიდვა.""",
-            reply_markup=main_menu()
+            reply_markup=main_menu(),
         )
         return
+
+    track_play(call.from_user.id)
 
     code = generate_code()
     url = f"{GAME_URL}/?code={code}&user={user_id}"
@@ -207,7 +307,7 @@ def play_callback(call):
 
 🎮 Game:
 {url}""",
-        parse_mode="Markdown"
+        parse_mode="Markdown",
     )
 
 
@@ -223,7 +323,7 @@ def games_callback(call):
 Для игры нужен активный доступ.
 Active access is required to play.
 თამაშისთვის საჭიროა აქტიური წვდომა.""",
-        reply_markup=main_menu()
+        reply_markup=main_menu(),
     )
 
 
@@ -250,11 +350,7 @@ Time left: {hours} h. {minutes} min.
 ⚙️ Access is not active.
 ⚙️ წვდომა არ არის აქტიური."""
 
-    bot.send_message(
-        call.message.chat.id,
-        text,
-        reply_markup=main_menu()
-    )
+    bot.send_message(call.message.chat.id, text, reply_markup=main_menu())
 
 
 while True:
