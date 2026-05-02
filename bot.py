@@ -5,11 +5,14 @@ import string
 import time
 import json
 import os
+from typing import Optional
 
 TOKEN = "8250941489:AAGq74NQ2anLdiQ8-t1SOmH2Qusr4c5kyZo"
 GAME_URL = "https://guileless-toffee-fec890.netlify.app"
 ACCESS_FILE = "access.json"
 STATS_FILE = "stats.json"
+
+TRIAL_SECONDS = 60
 
 bot = telebot.TeleBot(TOKEN)
 
@@ -48,6 +51,10 @@ def load_stats():
     data.setdefault("paid_users", [])
     data.setdefault("paid_amount", 0)
     data.setdefault("codes", 0)
+
+    # trial stats
+    data.setdefault("trial_users", [])
+    data.setdefault("trial_count", 0)
     return data
 
 
@@ -73,7 +80,7 @@ def track_play(user_id: int):
     save_stats()
 
 
-def track_payment(user_id: int, amount: int | None):
+def track_payment(user_id: int, amount: Optional[int]):
     stats["payments"] += 1
     if amount is not None:
         try:
@@ -101,6 +108,10 @@ START_TEXT = """🏛 *Ancient Card Games*
 
 🎴 Poker
 ⚔️ Emperor’s 21
+
+🎁 Бесплатно: 1 минута trial
+🎁 Free: 1 minute trial
+🎁 უფასოდ: 1 წუთი trial
 
 💰 Доступ / Access / წვდომა:
 ⏱ 1 час / 1 hour / 1 საათი — 50⭐
@@ -132,6 +143,8 @@ def stats_cmd(message):
         f"🎮 Play unique: {len(set(stats['play_users']))}\n"
         f"⬇️ Play clicks: {stats['play_clicks']}\n"
         f"🎟 Codes: {stats['codes']}\n"
+        f"🎁 Trial unique: {len(set(stats['trial_users']))}\n"
+        f"🎁 Trial uses: {stats['trial_count']}\n"
         f"💰 Payments count: {stats['payments']}\n"
         f"💸 Paid users: {len(set(stats['paid_users']))}\n"
         f"⭐ Paid amount (stars): {stats['paid_amount']}\n"
@@ -275,27 +288,52 @@ def successful_payment(message):
 
 @bot.callback_query_handler(func=lambda call: call.data == "play")
 def play_callback(call):
-    user_id = str(call.from_user.id)
+    user_id_int = call.from_user.id
+    user_id = str(user_id_int)
     now = int(time.time())
 
+    # Access check
     if user_id not in user_access or user_access[user_id] < now:
-        bot.answer_callback_query(
-            call.id,
-            "Сначала купите доступ / Buy access first / ჯერ შეიძინეთ წვდომა",
-            show_alert=True,
-        )
-        bot.send_message(
-            call.message.chat.id,
-            """🔒 Доступ не активен.
+        # Trial available once per user
+        if user_id_int not in stats["trial_users"]:
+            user_access[user_id] = now + TRIAL_SECONDS
+            save_access(user_access)
+
+            stats["trial_users"].append(int(user_id_int))
+            stats["trial_count"] += 1
+            save_stats()
+
+            bot.send_message(
+                call.message.chat.id,
+                """🎁 Бесплатная 1 минута trial активирована.
+🎁 Free 1 minute trial activated.
+🎁 უფასო 1 წუთიანი trial გააქტიურდა.
+
+После trial нужен доступ по прайсу.
+After trial you need access.
+Trial-ის შემდეგ საჭიროა წვდომა.
+""",
+                reply_markup=main_menu(),
+            )
+        else:
+            bot.answer_callback_query(
+                call.id,
+                "Сначала купите доступ / Buy access first / ჯერ შეიძინეთ წვდომა",
+                show_alert=True,
+            )
+            bot.send_message(
+                call.message.chat.id,
+                """🔒 Доступ не активен.
 🔒 Access is not active.
 🔒 წვდომა არ არის აქტიური.
 
 Нажмите 💰 Купить доступ / Press 💰 Buy Access / დააჭირეთ 💰 წვდომის ყიდვა.""",
-            reply_markup=main_menu(),
-        )
-        return
+                reply_markup=main_menu(),
+            )
+            return
 
-    track_play(call.from_user.id)
+    # Play
+    track_play(user_id_int)
 
     code = generate_code()
     url = f"{GAME_URL}/?code={code}&user={user_id}"
