@@ -6,8 +6,7 @@ import time
 import json
 import os
 import threading
-
-TOKEN = os.getenv("BOT_TOKEN")
+TOKEN = "8250941489:AAGq74NQ2anLdiQ8-t1SOmH2Qusr4c5kyZo"
 GAME_URL = "https://guileless-toffee-fec890.netlify.app"
 
 ACCESS_FILE = "access.json"
