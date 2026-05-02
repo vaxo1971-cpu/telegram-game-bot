@@ -307,7 +307,7 @@ def play_callback(call):
 while True:
     try:
         print("Бот запущен...")
-        bot.infinity_polling(timeout=60, long_polling_timeout=60)
+        bot.infinity_polling(timeout=60, long_polling_timeout=60, skip_pending=True)    
     except Exception as e:
         print(e)
         time.sleep(3)
