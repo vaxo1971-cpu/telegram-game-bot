@@ -6,6 +6,7 @@ import time
 import json
 import os
 import threading
+from flask import Flask, request, jsonify, make_response
 TOKEN = "8250941489:AAGq74NQ2anLdiQ8-t1SOmH2Qusr4c5kyZo"
 GAME_URL = "https://guileless-toffee-fec890.netlify.app"
 
@@ -23,7 +24,47 @@ PRICES = {
 bot = telebot.TeleBot(TOKEN)
 
 bot.remove_webhook()
+app = Flask(__name__)
 
+def cors_response(data):
+    response = make_response(jsonify(data))
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    return response
+
+
+@app.route("/")
+def home():
+    return "Bot is running"
+
+
+@app.route("/check_access")
+def check_access():
+    user_id = request.args.get("user")
+    now = int(time.time())
+
+    if not user_id:
+        return cors_response({"access": False})
+
+    access_until = user_access.get(str(user_id), 0)
+
+    if access_until > now:
+        return cors_response({
+            "access": True,
+            "seconds_left": access_until - now
+        })
+
+    return cors_response({
+        "access": False,
+        "seconds_left": 0
+    })
+
+
+def run_web():
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
+    
 def load_json(path, default):
     if os.path.exists(path):
         try:
@@ -302,7 +343,7 @@ def play_callback(call):
         call.message.chat.id,
         f"🎮 {game_link(user_id)}"
     )
-
+threading.Thread(target=run_web, daemon=True).start()
 
 while True:
     try:
