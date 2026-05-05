@@ -1,20 +1,15 @@
 import os
 import time
-import threading
-
-from flask import Flask
 import telebot
 from telebot import types
-
 
 # ================== НАСТРОЙКИ ==================
 
 TOKEN = os.getenv("BOT_TOKEN", "8250941489:AAGq74NQ2anLdiQ8-t1SOmH2Qusr4c5kyZo")
 
-# Твой Telegram ID для бесплатного админ-доступа
-ADMIN_IDS = {
-    5274220765
-}
+GAME_URL = "https://aquamarine-strudel-14e0ed.netlify.app"
+
+ADMIN_IDS = {5274220765}
 
 TRIAL_TIME = 300  # 5 минут
 
@@ -25,10 +20,7 @@ ACCESS_TIME = {
 }
 
 bot = telebot.TeleBot(TOKEN)
-app = Flask(__name__)
-
 users = {}
-
 
 # ================== ДОСТУП ==================
 
@@ -52,13 +44,10 @@ def has_access(user_id):
     if not user:
         return False
 
-    trial_started = user.get("trial_started", 0)
-    pro_until = user.get("pro_until", 0)
-
-    if time.time() - trial_started <= TRIAL_TIME:
+    if time.time() - user.get("trial_started", 0) <= TRIAL_TIME:
         return True
 
-    if time.time() <= pro_until:
+    if time.time() <= user.get("pro_until", 0):
         return True
 
     return False
@@ -85,14 +74,6 @@ def access_left_text(user_id):
     return "⛔ Доступ закончился."
 
 
-def buy_menu():
-    markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("⭐ 1 час", callback_data="buy_1h"))
-    markup.add(types.InlineKeyboardButton("⭐ 24 часа", callback_data="buy_24h"))
-    markup.add(types.InlineKeyboardButton("⭐ 48 часов", callback_data="buy_48h"))
-    return markup
-
-
 def main_menu():
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton("🎮 Играть", callback_data="play"))
@@ -100,6 +81,14 @@ def main_menu():
     markup.add(types.InlineKeyboardButton("💳 Купить PRO", callback_data="buy_menu"))
     return markup
 
+
+def buy_menu():
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton("⏱ 1 час — 50⭐", callback_data="buy_1h"))
+    markup.add(types.InlineKeyboardButton("📅 24 часа — 150⭐", callback_data="buy_24h"))
+    markup.add(types.InlineKeyboardButton("🔥 48 часов — 300⭐", callback_data="buy_48h"))
+    markup.add(types.InlineKeyboardButton("⬅️ Назад", callback_data="back"))
+    return markup
 
 # ================== КОМАНДЫ ==================
 
@@ -109,9 +98,12 @@ def start(message):
     start_trial(user_id)
 
     text = (
-        "🎮 Добро пожаловать в Ancient Card Games!\n\n"
-        "🎁 Первые 5 минут бесплатно.\n"
-        "После окончания trial можно купить PRO-доступ.\n\n"
+        "🏛 Ancient Card Games\n\n"
+        "🎴 Poker\n"
+        "⚔️ Emperor’s 21\n"
+        "🃏 Joker\n\n"
+        "🎁 Бесплатно: 5 минут trial\n"
+        "💰 После окончания можно купить PRO-доступ.\n\n"
         f"{access_left_text(user_id)}"
     )
 
@@ -129,7 +121,6 @@ def status(message):
     start_trial(user_id)
     bot.send_message(user_id, access_left_text(user_id), reply_markup=main_menu())
 
-
 # ================== КНОПКИ ==================
 
 @bot.callback_query_handler(func=lambda call: call.data == "access")
@@ -142,9 +133,14 @@ def access_callback(call):
 
 @bot.callback_query_handler(func=lambda call: call.data == "buy_menu")
 def buy_menu_callback(call):
-    user_id = call.message.chat.id
     bot.answer_callback_query(call.id)
-    bot.send_message(user_id, "Выбери срок PRO-доступа:", reply_markup=buy_menu())
+    bot.send_message(call.message.chat.id, "Выбери срок PRO-доступа:", reply_markup=buy_menu())
+
+
+@bot.callback_query_handler(func=lambda call: call.data == "back")
+def back_callback(call):
+    bot.answer_callback_query(call.id)
+    bot.send_message(call.message.chat.id, "Главное меню:", reply_markup=main_menu())
 
 
 @bot.callback_query_handler(func=lambda call: call.data == "play")
@@ -161,12 +157,16 @@ def play_callback(call):
         )
         return
 
+    game_link = f"{GAME_URL}/?user={user_id}"
+
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton("🎮 Открыть игру", url=game_link))
+    markup.add(types.InlineKeyboardButton("⏳ Мой доступ", callback_data="access"))
+
     bot.send_message(
         user_id,
-        "🎮 Игра открыта.\n\n"
-        "Если у тебя игра на сайте, нажми кнопку/ссылку сайта в старом меню.\n"
-        f"\n{access_left_text(user_id)}",
-        reply_markup=main_menu()
+        f"🎮 Игра открыта:\n{game_link}\n\n{access_left_text(user_id)}",
+        reply_markup=markup
     )
 
 
@@ -195,26 +195,10 @@ def buy_callback(call):
         reply_markup=main_menu()
     )
 
-
-# ================== FLASK ДЛЯ RENDER ==================
-
-@app.route("/")
-def home():
-    return "Bot is running"
-
-
 # ================== ЗАПУСК ==================
 
-def run_bot():
-    while True:
-        try:
-            bot.remove_webhook()
-            bot.infinity_polling(skip_pending=True, timeout=30, long_polling_timeout=30)
-        except Exception as e:
-            print("BOT ERROR:", e)
-            time.sleep(5)
-
-
 if __name__ == "__main__":
-    threading.Thread(target=run_bot, daemon=True).start()
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 10000)))
+    print("Bot starting...")
+    bot.remove_webhook()
+    time.sleep(1)
+    bot.infinity_polling(skip_pending=True, timeout=30, long_polling_timeout=30)
