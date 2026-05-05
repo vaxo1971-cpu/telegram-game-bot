@@ -1,12 +1,10 @@
 import os
 import time
 import json
-import threading
 from pathlib import Path
 
 import telebot
 from telebot import types
-from flask import Flask, request, jsonify
 
 TOKEN = os.getenv("BOT_TOKEN")
 GAME_URL = os.getenv("WEBAPP_URL")
@@ -16,7 +14,6 @@ TRIAL_TIME = 300
 DATA_FILE = Path("users_access.json")
 
 bot = telebot.TeleBot(TOKEN)
-app = Flask(__name__)
 
 # 🌍 языки
 LANG = {}
@@ -81,7 +78,7 @@ def trial_left(user_id):
         return 999999
 
     user = ensure_user(user_id)
-    left = TRIAL_TIME - (int(time.time()) - user["trial_started"])
+    left = TRIAL_TIME - (int(time.time() - user["trial_started"]))
     return max(0, left)
 
 def access_text(user_id):
@@ -147,28 +144,18 @@ def set_lang_cb(call):
     set_lang(call.message.chat.id, lang)
     bot.send_message(call.message.chat.id, "OK", reply_markup=main_menu(call.message.chat.id))
 
-# API для сайта
-@app.get("/check_access")
-def check_access():
-    user_id = request.args.get("user")
-
-    if not user_id:
-        return jsonify({"access": False})
-
-    user_id = int(user_id)
-
-    if is_admin(user_id):
-        return jsonify({"access": True})
-
-    return jsonify({
-        "access": trial_left(user_id) > 0
-    })
-
 # запуск
 def run_bot():
+    print("Deleting webhook...")
     bot.remove_webhook()
-    bot.infinity_polling()
+    time.sleep(2)
+
+    print("Bot started...")
+    bot.infinity_polling(
+        skip_pending=True,
+        timeout=20,
+        long_polling_timeout=20
+    )
 
 if __name__ == "__main__":
-    threading.Thread(target=run_bot).start()
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 10000)))
+    run_bot()
