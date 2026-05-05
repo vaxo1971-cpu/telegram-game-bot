@@ -1,204 +1,174 @@
 import os
 import time
+import json
+import threading
+from pathlib import Path
+
 import telebot
 from telebot import types
+from flask import Flask, request, jsonify
 
-# ================== НАСТРОЙКИ ==================
-
-TOKEN = os.getenv("BOT_TOKEN", "8250941489:AAGq74NQ2anLdiQ8-t1SOmH2Qusr4c5kyZo")
-
-GAME_URL = "https://aquamarine-strudel-14e0ed.netlify.app"
+TOKEN = os.getenv("BOT_TOKEN")
+GAME_URL = os.getenv("WEBAPP_URL")
 
 ADMIN_IDS = {5274220765}
-
-TRIAL_TIME = 300  # 5 минут
-
-ACCESS_TIME = {
-    "1h": 3600,
-    "24h": 86400,
-    "48h": 172800,
-}
+TRIAL_TIME = 300
+DATA_FILE = Path("users_access.json")
 
 bot = telebot.TeleBot(TOKEN)
-users = {}
+app = Flask(__name__)
 
-# ================== ДОСТУП ==================
+# 🌍 языки
+LANG = {}
+
+def get_lang(user_id):
+    return LANG.get(user_id, "ru")
+
+def set_lang(user_id, lang):
+    LANG[user_id] = lang
+
+# тексты
+TEXT = {
+    "ru": {
+        "menu": "🎮 Играть",
+        "access": "⏳ Мой доступ",
+        "lang": "🌍 Язык",
+        "trial": "🎁 Осталось",
+        "expired": "⛔ Время закончилось",
+        "admin": "👑 Админ доступ"
+    },
+    "en": {
+        "menu": "🎮 Play",
+        "access": "⏳ My access",
+        "lang": "🌍 Language",
+        "trial": "🎁 Left",
+        "expired": "⛔ Time expired",
+        "admin": "👑 Admin access"
+    },
+    "ka": {
+        "menu": "🎮 თამაში",
+        "access": "⏳ წვდომა",
+        "lang": "🌍 ენა",
+        "trial": "🎁 დარჩა",
+        "expired": "⛔ დრო დასრულდა",
+        "admin": "👑 ადმინისტრატორი"
+    }
+}
+
+def load_users():
+    if not DATA_FILE.exists():
+        return {}
+    return json.loads(DATA_FILE.read_text())
+
+def save_users(data):
+    DATA_FILE.write_text(json.dumps(data))
+
+def ensure_user(user_id):
+    users = load_users()
+    uid = str(user_id)
+
+    if uid not in users:
+        users[uid] = {"trial_started": int(time.time())}
+        save_users(users)
+
+    return users[uid]
 
 def is_admin(user_id):
     return user_id in ADMIN_IDS
 
-
-def start_trial(user_id):
-    if user_id not in users:
-        users[user_id] = {
-            "trial_started": time.time(),
-            "pro_until": 0
-        }
-
-
-def has_access(user_id):
+def trial_left(user_id):
     if is_admin(user_id):
-        return True
+        return 999999
 
-    user = users.get(user_id)
-    if not user:
-        return False
+    user = ensure_user(user_id)
+    left = TRIAL_TIME - (int(time.time()) - user["trial_started"])
+    return max(0, left)
 
-    if time.time() - user.get("trial_started", 0) <= TRIAL_TIME:
-        return True
+def access_text(user_id):
+    lang = get_lang(user_id)
+    t = TEXT[lang]
 
-    if time.time() <= user.get("pro_until", 0):
-        return True
-
-    return False
-
-
-def access_left_text(user_id):
     if is_admin(user_id):
-        return "👑 У тебя админ-доступ без ограничения."
+        return t["admin"]
 
-    user = users.get(user_id)
-    if not user:
-        return "Доступ не активирован."
+    left = trial_left(user_id)
 
-    now = time.time()
+    if left > 0:
+        return f"{t['trial']}: {left//60}:{left%60}"
+    return t["expired"]
 
-    if now - user.get("trial_started", 0) <= TRIAL_TIME:
-        left = int(TRIAL_TIME - (now - user["trial_started"]))
-        return f"🎁 Бесплатно осталось: {left // 60} мин. {left % 60} сек."
+def main_menu(user_id):
+    lang = get_lang(user_id)
+    t = TEXT[lang]
 
-    if now <= user.get("pro_until", 0):
-        left = int(user["pro_until"] - now)
-        return f"✅ PRO осталось: {left // 3600} ч. {(left % 3600) // 60} мин."
+    kb = types.InlineKeyboardMarkup()
 
-    return "⛔ Доступ закончился."
+    if is_admin(user_id):
+        url = f"{GAME_URL}/?admin=vaxo1971"
+    else:
+        url = f"{GAME_URL}/?user={user_id}"
 
+    kb.add(types.InlineKeyboardButton(t["menu"], url=url))
+    kb.add(types.InlineKeyboardButton(t["access"], callback_data="access"))
+    kb.add(types.InlineKeyboardButton(t["lang"], callback_data="lang"))
 
-def main_menu():
-    markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("🎮 Играть", callback_data="play"))
-    markup.add(types.InlineKeyboardButton("⏳ Мой доступ", callback_data="access"))
-    markup.add(types.InlineKeyboardButton("💳 Купить PRO", callback_data="buy_menu"))
-    return markup
+    return kb
 
-
-def buy_menu():
-    markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("⏱ 1 час — 50⭐", callback_data="buy_1h"))
-    markup.add(types.InlineKeyboardButton("📅 24 часа — 150⭐", callback_data="buy_24h"))
-    markup.add(types.InlineKeyboardButton("🔥 48 часов — 300⭐", callback_data="buy_48h"))
-    markup.add(types.InlineKeyboardButton("⬅️ Назад", callback_data="back"))
-    return markup
-
-# ================== КОМАНДЫ ==================
-
+# команды
 @bot.message_handler(commands=["start"])
 def start(message):
     user_id = message.chat.id
-    start_trial(user_id)
-
-    text = (
-        "🏛 Ancient Card Games\n\n"
-        "🎴 Poker\n"
-        "⚔️ Emperor’s 21\n"
-        "🃏 Joker\n\n"
-        "🎁 Бесплатно: 5 минут trial\n"
-        "💰 После окончания можно купить PRO-доступ.\n\n"
-        f"{access_left_text(user_id)}"
-    )
-
-    bot.send_message(user_id, text, reply_markup=main_menu())
-
-
-@bot.message_handler(commands=["id"])
-def get_id(message):
-    bot.send_message(message.chat.id, f"Твой Telegram ID:\n{message.chat.id}")
-
-
-@bot.message_handler(commands=["status"])
-def status(message):
-    user_id = message.chat.id
-    start_trial(user_id)
-    bot.send_message(user_id, access_left_text(user_id), reply_markup=main_menu())
-
-# ================== КНОПКИ ==================
-
-@bot.callback_query_handler(func=lambda call: call.data == "access")
-def access_callback(call):
-    user_id = call.message.chat.id
-    start_trial(user_id)
-    bot.answer_callback_query(call.id)
-    bot.send_message(user_id, access_left_text(user_id), reply_markup=main_menu())
-
-
-@bot.callback_query_handler(func=lambda call: call.data == "buy_menu")
-def buy_menu_callback(call):
-    bot.answer_callback_query(call.id)
-    bot.send_message(call.message.chat.id, "Выбери срок PRO-доступа:", reply_markup=buy_menu())
-
-
-@bot.callback_query_handler(func=lambda call: call.data == "back")
-def back_callback(call):
-    bot.answer_callback_query(call.id)
-    bot.send_message(call.message.chat.id, "Главное меню:", reply_markup=main_menu())
-
-
-@bot.callback_query_handler(func=lambda call: call.data == "play")
-def play_callback(call):
-    user_id = call.message.chat.id
-    start_trial(user_id)
-    bot.answer_callback_query(call.id)
-
-    if not has_access(user_id):
-        bot.send_message(
-            user_id,
-            "⛔ Бесплатный доступ закончился.\n\nКупи PRO-доступ:",
-            reply_markup=buy_menu()
-        )
-        return
-
-    game_link = f"{GAME_URL}/?user={user_id}"
-
-    markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("🎮 Открыть игру", url=game_link))
-    markup.add(types.InlineKeyboardButton("⏳ Мой доступ", callback_data="access"))
+    ensure_user(user_id)
 
     bot.send_message(
         user_id,
-        f"🎮 Игра открыта:\n{game_link}\n\n{access_left_text(user_id)}",
-        reply_markup=markup
+        "🃏 Ancient Card Games",
+        reply_markup=main_menu(user_id)
     )
 
+@bot.callback_query_handler(func=lambda c: c.data == "access")
+def access_cb(call):
+    uid = call.message.chat.id
+    bot.send_message(uid, access_text(uid), reply_markup=main_menu(uid))
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("buy_"))
-def buy_callback(call):
-    user_id = call.message.chat.id
-    start_trial(user_id)
-
-    option = call.data.replace("buy_", "")
-    seconds = ACCESS_TIME.get(option)
-
-    bot.answer_callback_query(call.id)
-
-    if not seconds:
-        bot.send_message(user_id, "Ошибка тарифа.")
-        return
-
-    current_until = users[user_id].get("pro_until", 0)
-    base_time = max(time.time(), current_until)
-    users[user_id]["pro_until"] = base_time + seconds
-
-    bot.send_message(
-        user_id,
-        "✅ PRO-доступ активирован.\n\n"
-        f"{access_left_text(user_id)}",
-        reply_markup=main_menu()
+@bot.callback_query_handler(func=lambda c: c.data == "lang")
+def lang_menu(call):
+    kb = types.InlineKeyboardMarkup()
+    kb.add(
+        types.InlineKeyboardButton("🇷🇺", callback_data="lang_ru"),
+        types.InlineKeyboardButton("🇬🇧", callback_data="lang_en"),
+        types.InlineKeyboardButton("🇬🇪", callback_data="lang_ka"),
     )
+    bot.send_message(call.message.chat.id, "Choose language", reply_markup=kb)
 
-# ================== ЗАПУСК ==================
+@bot.callback_query_handler(func=lambda c: c.data.startswith("lang_"))
+def set_lang_cb(call):
+    lang = call.data.split("_")[1]
+    set_lang(call.message.chat.id, lang)
+    bot.send_message(call.message.chat.id, "OK", reply_markup=main_menu(call.message.chat.id))
+
+# API для сайта
+@app.get("/check_access")
+def check_access():
+    user_id = request.args.get("user")
+
+    if not user_id:
+        return jsonify({"access": False})
+
+    user_id = int(user_id)
+
+    if is_admin(user_id):
+        return jsonify({"access": True})
+
+    return jsonify({
+        "access": trial_left(user_id) > 0
+    })
+
+# запуск
+def run_bot():
+    bot.remove_webhook()
+    bot.infinity_polling()
 
 if __name__ == "__main__":
-    print("Bot starting...")
-    bot.remove_webhook()
-    time.sleep(1)
-    bot.infinity_polling(skip_pending=True, timeout=30, long_polling_timeout=30)
+    threading.Thread(target=run_bot).start()
+    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 10000)))
