@@ -31,16 +31,11 @@ TEXT = {
         "lang": "🌍 Язык",
         "choose_lang": "Выберите язык:",
         "ok": "✅ Готово",
-        "paid": "✅ Оплата прошла! Доступ открыт.",
+        "paid": "✅ Оплата прошла! Доступ открыт",
         "access": "⏳ Мой доступ",
-        "no_access": "⛔ Активного доступа нет",
-        "access_until": "✅ Доступ активен до:",
-        "buy_title": "Выберите тариф:",
-        "p1": "⏳ 1 час — 50 ⭐",
-        "p24": "🌙 24 часа — 150 ⭐",
-        "p48": "🔥 48 часов — 300 ⭐",
-        "invoice_title": "PRO доступ",
-        "invoice_desc": "Доступ к игре",
+        "no_access": "⛔ Нет доступа",
+        "access_until": "✅ Доступ до:",
+        "plans": "Выберите тариф:"
     },
     "en": {
         "start": "🃏 Ancient Card Games",
@@ -49,16 +44,11 @@ TEXT = {
         "lang": "🌍 Language",
         "choose_lang": "Choose language:",
         "ok": "✅ Done",
-        "paid": "✅ Payment successful! Access granted.",
+        "paid": "✅ Payment successful!",
         "access": "⏳ My access",
-        "no_access": "⛔ No active access",
-        "access_until": "✅ Access active until:",
-        "buy_title": "Choose plan:",
-        "p1": "⏳ 1 hour — 50 ⭐",
-        "p24": "🌙 24 hours — 150 ⭐",
-        "p48": "🔥 48 hours — 300 ⭐",
-        "invoice_title": "PRO access",
-        "invoice_desc": "Game access",
+        "no_access": "⛔ No access",
+        "access_until": "✅ Access until:",
+        "plans": "Choose plan:"
     },
     "ka": {
         "start": "🃏 Ancient Card Games",
@@ -67,65 +57,61 @@ TEXT = {
         "lang": "🌍 ენა",
         "choose_lang": "აირჩიეთ ენა:",
         "ok": "✅ მზადაა",
-        "paid": "✅ გადახდა წარმატებულია! წვდომა გახსნილია.",
-        "access": "⏳ ჩემი წვდომა",
-        "no_access": "⛔ აქტიური წვდომა არ არის",
-        "access_until": "✅ წვდომა აქტიურია:",
-        "buy_title": "აირჩიეთ პაკეტი:",
-        "p1": "⏳ 1 საათი — 50 ⭐",
-        "p24": "🌙 24 საათი — 150 ⭐",
-        "p48": "🔥 48 საათი — 300 ⭐",
-        "invoice_title": "PRO წვდომა",
-        "invoice_desc": "თამაშზე წვდომა",
-    },
+        "paid": "✅ გადახდა წარმატებულია",
+        "access": "⏳ წვდომა",
+        "no_access": "⛔ წვდომა არ არის",
+        "access_until": "✅ წვდომა:",
+        "plans": "აირჩიეთ პაკეტი:"
+    }
 }
 
+# ===== JSON =====
 
 def load_json(file):
     if not file.exists():
         return {}
     try:
         return json.loads(file.read_text())
-    except Exception:
+    except:
         return {}
-
 
 def save_json(file, data):
     file.write_text(json.dumps(data))
 
-
-def get_lang(user_id):
-    data = load_json(LANG_FILE)
-    return data.get(str(user_id), "ru")
-
-
-def set_lang(user_id, lang):
-    data = load_json(LANG_FILE)
-    data[str(user_id)] = lang
-    save_json(LANG_FILE, data)
-
+# ===== ACCESS =====
 
 def give_access(user_id, hours):
     users = load_json(DATA_FILE)
     uid = str(user_id)
-    now = int(time.time())
 
+    now = int(time.time())
     current = users.get(uid, {}).get("until", now)
+
     if current < now:
         current = now
 
     users[uid] = {"until": current + hours * 3600}
     save_json(DATA_FILE, users)
 
-
-def get_access_until(user_id):
+def get_access(user_id):
     users = load_json(DATA_FILE)
     return users.get(str(user_id), {}).get("until", 0)
 
+# ===== LANG =====
 
-def main_menu(user_id):
-    lang = get_lang(user_id)
-    t = TEXT[lang]
+def get_lang(user_id):
+    data = load_json(LANG_FILE)
+    return data.get(str(user_id), "ru")
+
+def set_lang(user_id, lang):
+    data = load_json(LANG_FILE)
+    data[str(user_id)] = lang
+    save_json(LANG_FILE, data)
+
+# ===== MENU =====
+
+def menu(user_id):
+    t = TEXT[get_lang(user_id)]
 
     kb = types.InlineKeyboardMarkup()
     kb.add(types.InlineKeyboardButton(t["play"], url=f"{WEBAPP_URL}/?user={user_id}"))
@@ -134,136 +120,108 @@ def main_menu(user_id):
     kb.add(types.InlineKeyboardButton(t["lang"], callback_data="lang"))
     return kb
 
+# ===== BOT =====
 
 @bot.message_handler(commands=["start"])
-def start(message):
-    user_id = message.chat.id
-    bot.send_message(user_id, TEXT[get_lang(user_id)]["start"], reply_markup=main_menu(user_id))
-
+def start(msg):
+    bot.send_message(msg.chat.id, TEXT[get_lang(msg.chat.id)]["start"], reply_markup=menu(msg.chat.id))
 
 @bot.callback_query_handler(func=lambda c: c.data == "lang")
-def lang_menu(call):
+def lang(call):
     kb = types.InlineKeyboardMarkup()
     kb.add(
-        types.InlineKeyboardButton("🇷🇺 Русский", callback_data="set_ru"),
-        types.InlineKeyboardButton("🇬🇧 English", callback_data="set_en"),
-        types.InlineKeyboardButton("🇬🇪 ქართული", callback_data="set_ka"),
+        types.InlineKeyboardButton("🇷🇺", callback_data="set_ru"),
+        types.InlineKeyboardButton("🇬🇧", callback_data="set_en"),
+        types.InlineKeyboardButton("🇬🇪", callback_data="set_ka")
     )
-    bot.send_message(call.message.chat.id, TEXT[get_lang(call.message.chat.id)]["choose_lang"], reply_markup=kb)
-
+    bot.send_message(call.message.chat.id, "Choose language", reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("set_"))
-def set_lang_cb(call):
-    lang = call.data.split("_")[1]
-    set_lang(call.message.chat.id, lang)
-    bot.send_message(call.message.chat.id, TEXT[lang]["ok"], reply_markup=main_menu(call.message.chat.id))
-
+def setlang(call):
+    l = call.data.split("_")[1]
+    set_lang(call.message.chat.id, l)
+    bot.send_message(call.message.chat.id, TEXT[l]["ok"], reply_markup=menu(call.message.chat.id))
 
 @bot.callback_query_handler(func=lambda c: c.data == "access")
-def access_cb(call):
-    user_id = call.message.chat.id
-    lang = get_lang(user_id)
-    t = TEXT[lang]
+def access(call):
+    uid = call.message.chat.id
+    t = TEXT[get_lang(uid)]
 
-    until = get_access_until(user_id)
+    until = get_access(uid)
+
     if until > int(time.time()):
         msg = f"{t['access_until']} {time.strftime('%Y-%m-%d %H:%M', time.localtime(until))}"
     else:
         msg = t["no_access"]
 
-    bot.send_message(user_id, msg, reply_markup=main_menu(user_id))
-
+    bot.send_message(uid, msg, reply_markup=menu(uid))
 
 @bot.callback_query_handler(func=lambda c: c.data == "buy")
-def buy_menu(call):
-    lang = get_lang(call.message.chat.id)
-    t = TEXT[lang]
+def buy(call):
+    t = TEXT[get_lang(call.message.chat.id)]
 
     kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton(t["p1"], callback_data="pay_1h"))
-    kb.add(types.InlineKeyboardButton(t["p24"], callback_data="pay_24h"))
-    kb.add(types.InlineKeyboardButton(t["p48"], callback_data="pay_48h"))
+    kb.add(types.InlineKeyboardButton("1h ⭐50", callback_data="pay_1h"))
+    kb.add(types.InlineKeyboardButton("24h ⭐150", callback_data="pay_24h"))
+    kb.add(types.InlineKeyboardButton("48h ⭐300", callback_data="pay_48h"))
 
-    bot.send_message(call.message.chat.id, t["buy_title"], reply_markup=kb)
-
+    bot.send_message(call.message.chat.id, t["plans"], reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("pay_"))
-def send_invoice(call):
-    plan_id = call.data.replace("pay_", "")
-    plan = PLANS.get(plan_id)
-
-    if not plan:
-        return
-
-    lang = get_lang(call.message.chat.id)
-    t = TEXT[lang]
-
-    prices = [types.LabeledPrice(label=f"{plan['hours']}h", amount=plan["stars"])]
+def pay(call):
+    plan = c.data.split("_")[1]
+    p = PLANS[plan]
 
     bot.send_invoice(
         call.message.chat.id,
-        title=t["invoice_title"],
-        description=f"{t['invoice_desc']} — {plan['hours']}h",
-        invoice_payload=f"access_{plan_id}",
+        title="PRO",
+        description=f"{p['hours']}h access",
+        invoice_payload=plan,
         provider_token="",
         currency="XTR",
-        prices=prices,
-        start_parameter=f"buy_{plan_id}",
+        prices=[types.LabeledPrice(label="Access", amount=p["stars"])],
+        start_parameter="buy"
     )
-
 
 @bot.pre_checkout_query_handler(func=lambda q: True)
 def checkout(q):
     bot.answer_pre_checkout_query(q.id, ok=True)
 
-
 @bot.message_handler(content_types=["successful_payment"])
-def payment(message):
-    user_id = message.chat.id
-    payload = message.successful_payment.invoice_payload
+def paid(msg):
+    plan = msg.successful_payment.invoice_payload
+    give_access(msg.chat.id, PLANS[plan]["hours"])
 
-    if payload == "access_1h":
-        give_access(user_id, 1)
-    elif payload == "access_24h":
-        give_access(user_id, 24)
-    elif payload == "access_48h":
-        give_access(user_id, 48)
-    else:
-        give_access(user_id, 24)
+    bot.send_message(msg.chat.id, TEXT[get_lang(msg.chat.id)]["paid"], reply_markup=menu(msg.chat.id))
 
-    bot.send_message(user_id, TEXT[get_lang(user_id)]["paid"], reply_markup=main_menu(user_id))
+# ===== WEB =====
 
-
-@app.route("/", methods=["GET"])
+@app.route("/")
 def home():
     return "OK"
-
 
 @app.route(f"/{TOKEN}", methods=["POST"])
 def webhook():
     update = telebot.types.Update.de_json(request.get_data().decode("utf-8"))
     bot.process_new_updates([update])
-    return "OK", 200
+    return "OK"
 
-
-@app.route("/check_access", methods=["GET"])
+@app.route("/check_access")
 def check_access():
-    user_id = request.args.get("user")
+    uid = request.args.get("user")
+    if not uid:
+        return jsonify({"access": False})
 
-    if not user_id:
-        return jsonify({"access": False, "until": 0})
-
-    until = get_access_until(user_id)
+    until = get_access(uid)
 
     return jsonify({
         "access": until > int(time.time()),
         "until": until
     })
 
+# ===== START =====
 
-@app.before_request
-def setup_webhook_once():
-    if not getattr(app, "webhook_set", False):
-        bot.remove_webhook()
-        bot.set_webhook(url=f"{SERVICE_URL}/{TOKEN}")
-        app.webhook_set = True
+@app.before_first_request
+def setup():
+    bot.remove_webhook()
+    bot.set_webhook(url=f"{SERVICE_URL}/{TOKEN}")
