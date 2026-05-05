@@ -221,7 +221,6 @@ def check_access():
 
 # ===== START =====
 
-@app.before_first_request
-def setup():
+with app.app_context():
     bot.remove_webhook()
     bot.set_webhook(url=f"{SERVICE_URL}/{TOKEN}")
