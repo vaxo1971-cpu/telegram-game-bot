@@ -1,368 +1,220 @@
+import os
+import time
+import threading
+
+from flask import Flask
 import telebot
 from telebot import types
-import random
-import string
-import time
-import json
-import os
-import threading
-from flask import Flask, request, jsonify, make_response
 
-TOKEN = "8250941489:AAGq74NQ2anLdiQ8-t1SOmH2Qusr4c5kyZo"
-WEB_APP_URL = "https://aquamarine-strudel-14e0ed.netlify.app"
 
-ACCESS_FILE = "access.json"
-STATS_FILE = "stats.json"
-TRIAL_SECONDS = 60
+# ================== НАСТРОЙКИ ==================
 
-PRICES = {
-    "pay_1": {"seconds": 3600, "stars": 50, "title": "1 hour access"},
-    "pay_24": {"seconds": 86400, "stars": 150, "title": "24 hours access"},
-    "pay_48": {"seconds": 172800, "stars": 300, "title": "48 hours access"},
+TOKEN = os.getenv("BOT_TOKEN", "8250941489:AAGq74NQ2anLdiQ8-t1SOmH2Qusr4c5kyZo")
+
+# Твой Telegram ID для бесплатного админ-доступа
+ADMIN_IDS = {
+    123456789
+}
+
+TRIAL_TIME = 300  # 5 минут
+
+ACCESS_TIME = {
+    "1h": 3600,
+    "24h": 86400,
+    "48h": 172800,
 }
 
 bot = telebot.TeleBot(TOKEN)
-bot.remove_webhook()
 app = Flask(__name__)
 
+users = {}
 
-def cors_response(data):
-    response = make_response(jsonify(data))
-    response.headers["Access-Control-Allow-Origin"] = "*"
-    response.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
-    response.headers["Access-Control-Allow-Headers"] = "Content-Type"
-    return response
 
+# ================== ДОСТУП ==================
+
+def is_admin(user_id):
+    return user_id in ADMIN_IDS
+
+
+def start_trial(user_id):
+    if user_id not in users:
+        users[user_id] = {
+            "trial_started": time.time(),
+            "pro_until": 0
+        }
+
+
+def has_access(user_id):
+    if is_admin(user_id):
+        return True
+
+    user = users.get(user_id)
+    if not user:
+        return False
+
+    trial_started = user.get("trial_started", 0)
+    pro_until = user.get("pro_until", 0)
+
+    if time.time() - trial_started <= TRIAL_TIME:
+        return True
+
+    if time.time() <= pro_until:
+        return True
+
+    return False
+
+
+def access_left_text(user_id):
+    if is_admin(user_id):
+        return "👑 У тебя админ-доступ без ограничения."
+
+    user = users.get(user_id)
+    if not user:
+        return "Доступ не активирован."
+
+    now = time.time()
+
+    if now - user.get("trial_started", 0) <= TRIAL_TIME:
+        left = int(TRIAL_TIME - (now - user["trial_started"]))
+        return f"🎁 Бесплатно осталось: {left // 60} мин. {left % 60} сек."
+
+    if now <= user.get("pro_until", 0):
+        left = int(user["pro_until"] - now)
+        return f"✅ PRO осталось: {left // 3600} ч. {(left % 3600) // 60} мин."
+
+    return "⛔ Доступ закончился."
+
+
+def buy_menu():
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton("⭐ 1 час", callback_data="buy_1h"))
+    markup.add(types.InlineKeyboardButton("⭐ 24 часа", callback_data="buy_24h"))
+    markup.add(types.InlineKeyboardButton("⭐ 48 часов", callback_data="buy_48h"))
+    return markup
+
+
+def main_menu():
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton("🎮 Играть", callback_data="play"))
+    markup.add(types.InlineKeyboardButton("⏳ Мой доступ", callback_data="access"))
+    markup.add(types.InlineKeyboardButton("💳 Купить PRO", callback_data="buy_menu"))
+    return markup
+
+
+# ================== КОМАНДЫ ==================
+
+@bot.message_handler(commands=["start"])
+def start(message):
+    user_id = message.chat.id
+    start_trial(user_id)
+
+    text = (
+        "🎮 Добро пожаловать в Ancient Card Games!\n\n"
+        "🎁 Первые 5 минут бесплатно.\n"
+        "После окончания trial можно купить PRO-доступ.\n\n"
+        f"{access_left_text(user_id)}"
+    )
+
+    bot.send_message(user_id, text, reply_markup=main_menu())
+
+
+@bot.message_handler(commands=["id"])
+def get_id(message):
+    bot.send_message(message.chat.id, f"Твой Telegram ID:\n{message.chat.id}")
+
+
+@bot.message_handler(commands=["status"])
+def status(message):
+    user_id = message.chat.id
+    start_trial(user_id)
+    bot.send_message(user_id, access_left_text(user_id), reply_markup=main_menu())
+
+
+# ================== КНОПКИ ==================
+
+@bot.callback_query_handler(func=lambda call: call.data == "access")
+def access_callback(call):
+    user_id = call.message.chat.id
+    start_trial(user_id)
+    bot.answer_callback_query(call.id)
+    bot.send_message(user_id, access_left_text(user_id), reply_markup=main_menu())
+
+
+@bot.callback_query_handler(func=lambda call: call.data == "buy_menu")
+def buy_menu_callback(call):
+    user_id = call.message.chat.id
+    bot.answer_callback_query(call.id)
+    bot.send_message(user_id, "Выбери срок PRO-доступа:", reply_markup=buy_menu())
+
+
+@bot.callback_query_handler(func=lambda call: call.data == "play")
+def play_callback(call):
+    user_id = call.message.chat.id
+    start_trial(user_id)
+    bot.answer_callback_query(call.id)
+
+    if not has_access(user_id):
+        bot.send_message(
+            user_id,
+            "⛔ Бесплатный доступ закончился.\n\nКупи PRO-доступ:",
+            reply_markup=buy_menu()
+        )
+        return
+
+    bot.send_message(
+        user_id,
+        "🎮 Игра открыта.\n\n"
+        "Если у тебя игра на сайте, нажми кнопку/ссылку сайта в старом меню.\n"
+        f"\n{access_left_text(user_id)}",
+        reply_markup=main_menu()
+    )
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("buy_"))
+def buy_callback(call):
+    user_id = call.message.chat.id
+    start_trial(user_id)
+
+    option = call.data.replace("buy_", "")
+    seconds = ACCESS_TIME.get(option)
+
+    bot.answer_callback_query(call.id)
+
+    if not seconds:
+        bot.send_message(user_id, "Ошибка тарифа.")
+        return
+
+    current_until = users[user_id].get("pro_until", 0)
+    base_time = max(time.time(), current_until)
+    users[user_id]["pro_until"] = base_time + seconds
+
+    bot.send_message(
+        user_id,
+        "✅ PRO-доступ активирован.\n\n"
+        f"{access_left_text(user_id)}",
+        reply_markup=main_menu()
+    )
+
+
+# ================== FLASK ДЛЯ RENDER ==================
 
 @app.route("/")
 def home():
     return "Bot is running"
 
 
-@app.route("/check_access")
-def check_access():
-    user_id = request.args.get("user")
-    now = int(time.time())
+# ================== ЗАПУСК ==================
 
-    if not user_id:
-        return cors_response({"access": False, "seconds_left": 0})
-
-    access_until = user_access.get(str(user_id), 0)
-
-    if access_until > now:
-        return cors_response({
-            "access": True,
-            "seconds_left": access_until - now
-        })
-
-    return cors_response({
-        "access": False,
-        "seconds_left": 0
-    })
-
-
-def run_web():
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
-
-
-def load_json(path, default):
-    if os.path.exists(path):
+def run_bot():
+    while True:
         try:
-            with open(path, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            return default
-    return default
-
-
-def save_json(path, data):
-    try:
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-    except Exception:
-        pass
-
-
-user_access = load_json(ACCESS_FILE, {})
-
-stats = load_json(STATS_FILE, {
-    "started_users": [],
-    "play_users": [],
-    "play_clicks": 0,
-    "payments": 0,
-    "paid_users": [],
-    "paid_amount": 0,
-    "codes": 0,
-    "trial_users": [],
-    "trial_count": 0
-})
-
-
-def save_access():
-    save_json(ACCESS_FILE, user_access)
-
-
-def save_stats():
-    save_json(STATS_FILE, stats)
-
-
-def generate_code():
-    return "LS-" + "".join(random.choices(string.ascii_uppercase + string.digits, k=6))
-
-
-def game_link(user_id):
-    code = generate_code()
-    return f"{WEB_APP_URL}/?code={code}&user={user_id}"
-
-
-START_TEXT = """🏛 *Ancient Card Games*
-
-🇷🇺 Добро пожаловать в мир древних карточных игр.
-🇬🇧 Welcome to the world of ancient card games.
-🇬🇪 კეთილი იყოს თქვენი მობრძანება უძველესი კარტის თამაშების სამყაროში.
-
-🎴 Poker
-⚔️ Emperor’s 21
-🃏 Joker
-
-🎁 Бесплатно: 1 минута trial
-🎁 Free: 1 minute trial
-🎁 უფასოდ: 1 წუთი trial
-
-💰 Доступ / Access / წვდომა:
-⏱ 1 час / 1 hour / 1 საათი — 50⭐
-📅 24 часа / 24 hours / 24 საათი — 150⭐
-🔥 48 часов / 48 hours / 48 საათი — 300⭐
-
-👇 Выберите действие / Choose action / აირჩიეთ მოქმედება:
-"""
-
-
-def main_menu():
-    markup = types.InlineKeyboardMarkup()
-    markup.row(types.InlineKeyboardButton("🎮 Играть / Play / თამაში", callback_data="play"))
-    markup.row(types.InlineKeyboardButton("💰 Купить доступ / Buy Access / წვდომის ყიდვა", callback_data="buy"))
-    return markup
-
-
-def buy_keyboard():
-    markup = types.InlineKeyboardMarkup()
-    markup.row(types.InlineKeyboardButton("⏱ 1 час / 1 hour / 1 საათი — 50⭐", callback_data="pay_1"))
-    markup.row(types.InlineKeyboardButton("📅 24 часа / 24 hours / 24 საათი — 150⭐", callback_data="pay_24"))
-    markup.row(types.InlineKeyboardButton("🔥 48 часов / 48 hours / 48 საათი — 300⭐", callback_data="pay_48"))
-    markup.row(types.InlineKeyboardButton("⬅️ Назад / Back / უკან", callback_data="back"))
-    return markup
-
-
-def trial_finished_message(chat_id, user_id):
-    now = int(time.time())
-    user_id_str = str(user_id)
-
-    if user_access.get(user_id_str, 0) > now:
-        return
-
-    bot.send_message(
-        chat_id,
-        """⏳ Бесплатный доступ закончился.
-⏳ Free trial has ended.
-⏳ უფასო წვდომა დასრულდა.
-
-💰 Купите доступ:
-💰 Buy access:
-💰 შეიძინეთ წვდომა:""",
-        reply_markup=buy_keyboard()
-    )
-
-
-@bot.message_handler(commands=["start"])
-def start(message):
-    user_id = message.from_user.id
-
-    if user_id not in stats["started_users"]:
-        stats["started_users"].append(user_id)
-        save_stats()
-
-    bot.send_message(
-        message.chat.id,
-        START_TEXT,
-        parse_mode="Markdown",
-        reply_markup=main_menu()
-    )
-
-
-@bot.message_handler(commands=["stats"])
-def stats_cmd(message):
-    now = int(time.time())
-    active_access = sum(1 for v in user_access.values() if v > now)
-
-    text = f"""📊 Stats:
-
-/start: {len(stats['started_users'])}
-Play users: {len(stats['play_users'])}
-Clicks: {stats['play_clicks']}
-Trial: {stats['trial_count']}
-Payments: {stats['payments']}
-Paid users: {len(stats['paid_users'])}
-Paid amount: {stats['paid_amount']}⭐
-Active access: {active_access}
-Codes: {stats['codes']}"""
-
-    bot.send_message(message.chat.id, text)
-
-
-@bot.callback_query_handler(func=lambda call: call.data == "back")
-def back_callback(call):
-    bot.send_message(
-        call.message.chat.id,
-        START_TEXT,
-        parse_mode="Markdown",
-        reply_markup=main_menu()
-    )
-
-
-@bot.callback_query_handler(func=lambda call: call.data == "buy")
-def buy_callback(call):
-    bot.send_message(
-        call.message.chat.id,
-        """💰 Выберите доступ:
-💰 Choose access:
-💰 აირჩიეთ წვდომა:""",
-        reply_markup=buy_keyboard()
-    )
-
-
-@bot.callback_query_handler(func=lambda call: call.data in PRICES)
-def pay_callback(call):
-    item = PRICES[call.data]
-
-    prices = [
-        types.LabeledPrice(
-            label=item["title"],
-            amount=item["stars"]
-        )
-    ]
-
-    bot.send_invoice(
-        chat_id=call.message.chat.id,
-        title=item["title"],
-        description="Ancient Card Games access",
-        invoice_payload=call.data,
-        provider_token="",
-        currency="XTR",
-        prices=prices
-    )
-
-
-@bot.pre_checkout_query_handler(func=lambda query: True)
-def checkout(pre_checkout_query):
-    bot.answer_pre_checkout_query(pre_checkout_query.id, ok=True)
-
-
-@bot.message_handler(content_types=["successful_payment"])
-def successful_payment(message):
-    user_id = str(message.from_user.id)
-    payload = message.successful_payment.invoice_payload
-
-    if payload not in PRICES:
-        return
-
-    item = PRICES[payload]
-    now = int(time.time())
-
-    current_until = user_access.get(user_id, 0)
-    if current_until < now:
-        current_until = now
-
-    user_access[user_id] = current_until + item["seconds"]
-    save_access()
-
-    stats["payments"] += 1
-    stats["paid_amount"] += item["stars"]
-
-    if message.from_user.id not in stats["paid_users"]:
-        stats["paid_users"].append(message.from_user.id)
-
-    save_stats()
-
-    bot.send_message(
-        message.chat.id,
-        f"""✅ Доступ оплачен.
-✅ Access paid.
-✅ წვდომა გადახდილია.
-
-🎮 Играть / Play / თამაში:
-{game_link(user_id)}""",
-        reply_markup=main_menu()
-    )
-
-
-@bot.callback_query_handler(func=lambda call: call.data == "play")
-def play_callback(call):
-    user_id_int = call.from_user.id
-    user_id = str(user_id_int)
-    now = int(time.time())
-
-    has_access = user_access.get(user_id, 0) > now
-
-    if not has_access:
-        if user_id_int not in stats["trial_users"]:
-            user_access[user_id] = now + TRIAL_SECONDS
-            save_access()
-
-            stats["trial_users"].append(user_id_int)
-            stats["trial_count"] += 1
-            save_stats()
-
-            bot.send_message(
-                call.message.chat.id,
-                """🎁 Бесплатный доступ на 1 минуту начался.
-🎁 Free 1 minute trial started.
-🎁 უფასო 1 წუთიანი წვდომა დაიწყო."""
-            )
-
-            threading.Timer(
-                TRIAL_SECONDS,
-                trial_finished_message,
-                args=(call.message.chat.id, user_id_int)
-            ).start()
-
-        else:
-            bot.send_message(
-                call.message.chat.id,
-                """🔒 Бесплатный доступ уже использован.
-🔒 Free trial already used.
-🔒 უფასო წვდომა უკვე გამოყენებულია.
-
-💰 Купите доступ / Buy access / შეიძინეთ წვდომა:""",
-                reply_markup=buy_keyboard()
-            )
-            return
-
-    stats["play_clicks"] += 1
-    stats["codes"] += 1
-
-    if user_id_int not in stats["play_users"]:
-        stats["play_users"].append(user_id_int)
-
-    save_stats()
-
-    bot.send_message(
-        call.message.chat.id,
-        f"🎮 {game_link(user_id)}"
-    )
-
-
-threading.Thread(target=run_web, daemon=True).start()
-
-while True:
-    try:
-        print("Бот запущен...")
-        bot.infinity_polling(
-            timeout=60,
-            long_polling_timeout=60,
-            skip_pending=True
-        )
-    except Exception as e:
-        print(e)
-        time.sleep(3)
+            bot.remove_webhook()
+            bot.infinity_polling(skip_pending=True, timeout=30, long_polling_timeout=30)
+        except Exception as e:
+            print("BOT ERROR:", e)
+            time.sleep(5)
+
+
+if __name__ == "__main__":
+    threading.Thread(target=run_bot, daemon=True).start()
+    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 10000)))
