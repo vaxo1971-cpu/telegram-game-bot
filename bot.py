@@ -13,7 +13,7 @@ TOKEN = os.getenv("BOT_TOKEN", "8250941489:AAGq74NQ2anLdiQ8-t1SOmH2Qusr4c5kyZo")
 
 # Твой Telegram ID для бесплатного админ-доступа
 ADMIN_IDS = {
-    123456789
+    5274220765
 }
 
 TRIAL_TIME = 300  # 5 минут
