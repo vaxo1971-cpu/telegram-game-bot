@@ -169,7 +169,7 @@ def buy(call):
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("pay_"))
 def pay(call):
-    plan = c.data.split("_")[1]
+    plan = call.data.split("_")[1]
     p = PLANS[plan]
 
     bot.send_invoice(
