@@ -8,7 +8,7 @@ import os
 import threading
 from flask import Flask, request, jsonify, make_response
 TOKEN = "8250941489:AAGq74NQ2anLdiQ8-t1SOmH2Qusr4c5kyZo"
-GAME_URL = "https://zingy-biscochitos-662933.netlify.app"
+WEB_APP_URL = "https://aquamarine-strudel-14e0ed.netlify.app"
 
 ACCESS_FILE = "access.json"
 STATS_FILE = "stats.json"
