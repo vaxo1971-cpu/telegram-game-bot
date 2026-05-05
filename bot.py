@@ -464,19 +464,9 @@ def webhook():
 
 @bot.message_handler(commands=["start"])
 def start(message):
-    ensure_user(message.from_user)
-    user_id = message.from_user.id
+    print("START COMMAND RECEIVED")  # проверка
 
-    if (message.from_user.username or "") == ADMIN_USERNAME:
-        add_admin(user_id)
-
-    log_event(user_id, "start")
-
-    bot.send_message(
-        message.chat.id,
-        f"{t(user_id, 'title')}\n\n{t(user_id, 'description')}",
-        reply_markup=main_menu(user_id)
-    )
+    bot.send_message(message.chat.id, "Работает")
 
 
 @bot.message_handler(commands=["stats"])
