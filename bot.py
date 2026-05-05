@@ -7,12 +7,12 @@ import json
 import os
 import threading
 from flask import Flask, request, jsonify, make_response
+
 TOKEN = "8250941489:AAGq74NQ2anLdiQ8-t1SOmH2Qusr4c5kyZo"
 WEB_APP_URL = "https://aquamarine-strudel-14e0ed.netlify.app"
 
 ACCESS_FILE = "access.json"
 STATS_FILE = "stats.json"
-
 TRIAL_SECONDS = 60
 
 PRICES = {
@@ -22,9 +22,9 @@ PRICES = {
 }
 
 bot = telebot.TeleBot(TOKEN)
-
 bot.remove_webhook()
 app = Flask(__name__)
+
 
 def cors_response(data):
     response = make_response(jsonify(data))
@@ -45,7 +45,7 @@ def check_access():
     now = int(time.time())
 
     if not user_id:
-        return cors_response({"access": False})
+        return cors_response({"access": False, "seconds_left": 0})
 
     access_until = user_access.get(str(user_id), 0)
 
@@ -64,7 +64,8 @@ def check_access():
 def run_web():
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
-    
+
+
 def load_json(path, default):
     if os.path.exists(path):
         try:
@@ -110,6 +111,11 @@ def generate_code():
     return "LS-" + "".join(random.choices(string.ascii_uppercase + string.digits, k=6))
 
 
+def game_link(user_id):
+    code = generate_code()
+    return f"{WEB_APP_URL}/?code={code}&user={user_id}"
+
+
 START_TEXT = """🏛 *Ancient Card Games*
 
 🇷🇺 Добро пожаловать в мир древних карточных игр.
@@ -118,6 +124,7 @@ START_TEXT = """🏛 *Ancient Card Games*
 
 🎴 Poker
 ⚔️ Emperor’s 21
+🃏 Joker
 
 🎁 Бесплатно: 1 минута trial
 🎁 Free: 1 minute trial
@@ -146,11 +153,6 @@ def buy_keyboard():
     markup.row(types.InlineKeyboardButton("🔥 48 часов / 48 hours / 48 საათი — 300⭐", callback_data="pay_48"))
     markup.row(types.InlineKeyboardButton("⬅️ Назад / Back / უკან", callback_data="back"))
     return markup
-
-
-def game_link(user_id):
-    code = generate_code()
-    return f"{GAME_URL}/?code={code}&user={user_id}"
 
 
 def trial_finished_message(chat_id, user_id):
@@ -211,7 +213,12 @@ Codes: {stats['codes']}"""
 
 @bot.callback_query_handler(func=lambda call: call.data == "back")
 def back_callback(call):
-    bot.send_message(call.message.chat.id, START_TEXT, parse_mode="Markdown", reply_markup=main_menu())
+    bot.send_message(
+        call.message.chat.id,
+        START_TEXT,
+        parse_mode="Markdown",
+        reply_markup=main_menu()
+    )
 
 
 @bot.callback_query_handler(func=lambda call: call.data == "buy")
@@ -319,6 +326,7 @@ def play_callback(call):
                 trial_finished_message,
                 args=(call.message.chat.id, user_id_int)
             ).start()
+
         else:
             bot.send_message(
                 call.message.chat.id,
@@ -343,12 +351,18 @@ def play_callback(call):
         call.message.chat.id,
         f"🎮 {game_link(user_id)}"
     )
+
+
 threading.Thread(target=run_web, daemon=True).start()
 
 while True:
     try:
         print("Бот запущен...")
-        bot.infinity_polling(timeout=60, long_polling_timeout=60, skip_pending=True)    
+        bot.infinity_polling(
+            timeout=60,
+            long_polling_timeout=60,
+            skip_pending=True
+        )
     except Exception as e:
         print(e)
         time.sleep(3)
