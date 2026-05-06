@@ -463,6 +463,7 @@ def webhook():
 
 @bot.message_handler(commands=["start"])
 def start(message):
+    print("START COMMAND RECEIVED")
     ensure_user(message.from_user)
 
     user_id = message.from_user.id
@@ -651,20 +652,29 @@ def code_handler(message):
 
 @bot.message_handler(func=lambda message: True)
 def fallback(message):
+    if message.text and message.text.startswith("/"):
+        return  # не перехватываем команды
+
     ensure_user(message.from_user)
     user_id = message.from_user.id
     bot.send_message(message.chat.id, t(user_id, "fallback"), reply_markup=main_menu(user_id))
-
 
 # =========================
 # STARTUP
 # =========================
 
 init_db()
-WEBHOOK_URL = os.getenv("WEBHOOK_URL", "https://telegram-game-bot-e8yt.onrender.com")
+WEBHOOK_URL = os.getenv("WEBHOOK_URL", "https://telegram-game-bot-e8yt.onrender.com").strip()
 
-bot.remove_webhook()
-bot.set_webhook(url=f"{WEBHOOK_URL}/{BOT_TOKEN}")
+try:
+    print("SETTING WEBHOOK...")
+    bot.remove_webhook()
+    time.sleep(1)
+    bot.set_webhook(url=f"{WEBHOOK_URL}/{BOT_TOKEN}")
+    print("WEBHOOK SET OK")
+except Exception:
+    print("WEBHOOK SET ERROR:")
+    traceback.print_exc()
 
 if __name__ == "__main__":
     # Local run only. Render uses: gunicorn bot:app
