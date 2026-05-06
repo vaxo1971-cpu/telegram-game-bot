@@ -23,10 +23,7 @@ if not BOT_TOKEN:
 
 bot = telebot.TeleBot(BOT_TOKEN)
 app = Flask(__name__)
-WEBHOOK_URL = os.getenv("WEBHOOK_URL", "https://telegram-game-bot-e8yt.onrender.com")
 
-bot.remove_webhook()
-bot.set_webhook(url=f"{WEBHOOK_URL}/{BOT_TOKEN}")
 
 # =========================
 # LANGUAGES
@@ -446,20 +443,18 @@ def check_access():
 
 @app.route(f"/{BOT_TOKEN}", methods=["POST"])
 def webhook():
-    """
-    Render runs: gunicorn bot:app
-    Telegram sends updates here through webhook.
-    IMPORTANT: no polling anywhere in this file.
-    """
     try:
+        print("WEBHOOK RECEIVED")
         json_str = request.get_data().decode("utf-8")
         update = telebot.types.Update.de_json(json_str)
+        print(update)
         bot.process_new_updates([update])
         return "OK", 200
     except Exception:
         print("WEBHOOK ERROR:")
         traceback.print_exc()
         return "ERROR", 500
+    
 
 
 # =========================
@@ -666,6 +661,10 @@ def fallback(message):
 # =========================
 
 init_db()
+WEBHOOK_URL = os.getenv("WEBHOOK_URL", "https://telegram-game-bot-e8yt.onrender.com")
+
+bot.remove_webhook()
+bot.set_webhook(url=f"{WEBHOOK_URL}/{BOT_TOKEN}")
 
 if __name__ == "__main__":
     # Local run only. Render uses: gunicorn bot:app
