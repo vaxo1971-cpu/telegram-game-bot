@@ -449,10 +449,7 @@ def webhook():
         update = telebot.types.Update.de_json(json_str)
         print(update)
 
-        if update.message and update.message.text and update.message.text.startswith("/start"):
-            start(update.message)
-        else:
-            bot.process_new_updates([update])
+        bot.process_new_updates([update])
 
         return "OK", 200
     except Exception:
