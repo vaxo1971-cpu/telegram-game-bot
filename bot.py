@@ -505,22 +505,28 @@ def gen48_command(message):
 
 @bot.callback_query_handler(func=lambda call: True)
 def callback_handler(call):
-    ensure_user(call.from_user)
-    user_id = call.from_user.id
+    try:
+        print("BUTTON:", call.data)
 
-    if (call.from_user.username or "") == ADMIN_USERNAME:
-        add_admin(user_id)
+        bot.answer_callback_query(call.id)
 
-    if call.data == "trial":
-        give_access(user_id, 5)
-        log_event(user_id, "trial")
-        bot.answer_callback_query(call.id, "OK")
-        bot.edit_message_text(
-            t(user_id, "trial_ok"),
-            call.message.chat.id,
-            call.message.message_id,
-            reply_markup=main_menu(user_id)
-        )
+        ensure_user(call.from_user)
+        user_id = call.from_user.id
+
+        if (call.from_user.username or "") == ADMIN_USERNAME:
+            add_admin(user_id)
+
+        if call.data == "trial":
+            give_access(user_id, 5)
+            log_event(user_id, "trial")
+            bot.answer_callback_query(call.id, "OK")
+
+            bot.edit_message_text(
+                t(user_id, "trial_ok"),
+                call.message.chat.id,
+                call.message.message_id,
+                reply_markup=main_menu(user_id)
+            )
 
     elif call.data == "my_access":
         row = get_user(user_id)
@@ -593,7 +599,9 @@ def callback_handler(call):
         bot.answer_callback_query(call.id)
         if is_admin_user(user_id):
             bot.send_message(call.message.chat.id, f"🎟 Code 48h:\n{generate_code(48 * 60)}")
-
+    except Exception as e:
+        print("CALLBACK ERROR:", e)
+        traceback.print_exc()
 
 @bot.pre_checkout_query_handler(func=lambda query: True)
 def pre_checkout(pre_checkout_query):
