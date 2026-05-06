@@ -23,6 +23,10 @@ if not BOT_TOKEN:
 
 bot = telebot.TeleBot(BOT_TOKEN)
 app = Flask(__name__)
+WEBHOOK_URL = os.getenv("WEBHOOK_URL", "https://telegram-game-bot-e8yt.onrender.com")
+
+bot.remove_webhook()
+bot.set_webhook(url=f"{WEBHOOK_URL}/{BOT_TOKEN}")
 
 # =========================
 # LANGUAGES
