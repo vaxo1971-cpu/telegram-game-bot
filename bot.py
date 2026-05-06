@@ -134,13 +134,12 @@ TEXTS = {
     },
 }
 
-# Telegram Stars products.
-# XTR amount is number of Stars.
 PRODUCTS = {
     "buy_1h": {"title": "1 Hour Access", "stars": 50, "minutes": 60},
     "buy_24h": {"title": "24 Hours Access", "stars": 150, "minutes": 24 * 60},
     "buy_48h": {"title": "48 Hours Access", "stars": 300, "minutes": 48 * 60},
 }
+
 
 # =========================
 # DB
@@ -420,11 +419,6 @@ def home():
 
 @app.route("/check_access", methods=["GET"])
 def check_access():
-    """
-    Site can call:
-    /check_access?user=123
-    Returns: {"access": true/false, "seconds_left": ..., "admin": true/false}
-    """
     user_id = request.args.get("user") or request.args.get("user_id")
     if not user_id or not str(user_id).isdigit():
         return jsonify({"access": False, "seconds_left": 0, "admin": False, "error": "missing_user"}), 400
@@ -456,7 +450,6 @@ def webhook():
         print("WEBHOOK ERROR:")
         traceback.print_exc()
         return "ERROR", 500
-    
 
 
 # =========================
@@ -505,148 +498,113 @@ def gen48_command(message):
 
 @bot.callback_query_handler(func=lambda call: True)
 def callback_handler(call):
-    print("BUTTON:", call.data)
+    try:
+        print("BUTTON:", call.data)
 
-    ensure_user(call.from_user)
-    user_id = call.from_user.id
+        ensure_user(call.from_user)
+        user_id = call.from_user.id
 
-    if (call.from_user.username or "") == ADMIN_USERNAME:
-        add_admin(user_id)
-
-    if call.data == "trial":
-        give_access(user_id, 5)
-        log_event(user_id, "trial")
-
-        bot.answer_callback_query(call.id, "OK")
-
-        bot.edit_message_text(
-            t(user_id, "trial_ok"),
-            call.message.chat.id,
-            call.message.message_id,
-            reply_markup=main_menu(user_id)
-        )
-
-    elif call.data == "my_access":
-        row = get_user(user_id)
-
-        if row and row["is_admin"] == 1:
-            text = t(user_id, "admin_status")
-        else:
-            left = access_seconds_left(user_id)
-            text = (
-                t(user_id, "left").format(minutes=max(1, left // 60))
-                if left > 0
-                else t(user_id, "expired")
-            )
-
-        bot.answer_callback_query(call.id)
-
-        bot.send_message(
-            call.message.chat.id,
-            text,
-            reply_markup=main_menu(user_id)
-        )
-
-    elif call.data == "language":
-        bot.answer_callback_query(call.id)
-
-        bot.send_message(
-            call.message.chat.id,
-            t(user_id, "choose_lang"),
-            reply_markup=language_menu()
-        )
-
-    elif call.data.startswith("lang_"):
-        set_lang(user_id, call.data.replace("lang_", ""))
-
-        bot.answer_callback_query(call.id)
-
-        bot.edit_message_text(
-            t(user_id, "lang_ok"),
-            call.message.chat.id,
-            call.message.message_id,
-            reply_markup=main_menu(user_id)
-        )
-
-    elif call.data == "admin_access":
         if (call.from_user.username or "") == ADMIN_USERNAME:
             add_admin(user_id)
 
+        if call.data == "trial":
+            give_access(user_id, 5)
+            log_event(user_id, "trial")
             bot.answer_callback_query(call.id, "OK")
-
-            bot.send_message(
+            bot.edit_message_text(
+                t(user_id, "trial_ok"),
                 call.message.chat.id,
-                t(user_id, "admin_ok"),
+                call.message.message_id,
                 reply_markup=main_menu(user_id)
             )
+
+        elif call.data == "my_access":
+            row = get_user(user_id)
+
+            if row and row["is_admin"] == 1:
+                text = t(user_id, "admin_status")
+            else:
+                left = access_seconds_left(user_id)
+                text = (
+                    t(user_id, "left").format(minutes=max(1, left // 60))
+                    if left > 0
+                    else t(user_id, "expired")
+                )
+
+            bot.answer_callback_query(call.id)
+            bot.send_message(call.message.chat.id, text, reply_markup=main_menu(user_id))
+
+        elif call.data == "language":
+            bot.answer_callback_query(call.id)
+            bot.send_message(call.message.chat.id, t(user_id, "choose_lang"), reply_markup=language_menu())
+
+        elif call.data.startswith("lang_"):
+            set_lang(user_id, call.data.replace("lang_", ""))
+            bot.answer_callback_query(call.id)
+            bot.edit_message_text(
+                t(user_id, "lang_ok"),
+                call.message.chat.id,
+                call.message.message_id,
+                reply_markup=main_menu(user_id)
+            )
+
+        elif call.data == "admin_access":
+            if (call.from_user.username or "") == ADMIN_USERNAME:
+                add_admin(user_id)
+                bot.answer_callback_query(call.id, "OK")
+                bot.send_message(call.message.chat.id, t(user_id, "admin_ok"), reply_markup=main_menu(user_id))
+            else:
+                bot.answer_callback_query(call.id, t(user_id, "admin_no"))
+
+        elif call.data == "buy_menu":
+            bot.answer_callback_query(call.id)
+            bot.send_message(call.message.chat.id, t(user_id, "buy_title"), reply_markup=buy_menu())
+
+        elif call.data in PRODUCTS:
+            product = PRODUCTS[call.data]
+            prices = [LabeledPrice(label=product["title"], amount=product["stars"])]
+
+            bot.send_invoice(
+                chat_id=call.message.chat.id,
+                title=product["title"],
+                description=f"Access for {product['minutes']} minutes",
+                invoice_payload=call.data,
+                provider_token="",
+                currency="XTR",
+                prices=prices,
+            )
+            bot.answer_callback_query(call.id)
+
+        elif call.data == "enter_code":
+            bot.answer_callback_query(call.id)
+            bot.send_message(call.message.chat.id, t(user_id, "send_code"))
+
+        elif call.data == "stats":
+            bot.answer_callback_query(call.id)
+            if is_admin_user(user_id):
+                bot.send_message(call.message.chat.id, get_stats_text())
+
+        elif call.data == "gen_code_24h":
+            bot.answer_callback_query(call.id)
+            if is_admin_user(user_id):
+                bot.send_message(call.message.chat.id, f"🎟 Code 24h:\n{generate_code(24 * 60)}")
+
+        elif call.data == "gen_code_48h":
+            bot.answer_callback_query(call.id)
+            if is_admin_user(user_id):
+                bot.send_message(call.message.chat.id, f"🎟 Code 48h:\n{generate_code(48 * 60)}")
+
         else:
-            bot.answer_callback_query(call.id, t(user_id, "admin_no"))
+            bot.answer_callback_query(call.id, "Unknown button")
 
-    elif call.data == "buy_menu":
-        bot.answer_callback_query(call.id)
+    except Exception as e:
+        print("CALLBACK ERROR:", e)
+        traceback.print_exc()
+        try:
+            bot.answer_callback_query(call.id, "Error")
+        except Exception:
+            pass
 
-        bot.send_message(
-            call.message.chat.id,
-            t(user_id, "buy_title"),
-            reply_markup=buy_menu()
-        )
-
-    elif call.data in PRODUCTS:
-        product = PRODUCTS[call.data]
-
-        prices = [
-            LabeledPrice(
-                label=product["title"],
-                amount=product["stars"]
-            )
-        ]
-
-        bot.send_invoice(
-            chat_id=call.message.chat.id,
-            title=product["title"],
-            description=f"Access for {product['minutes']} minutes",
-            invoice_payload=call.data,
-            provider_token="",
-            currency="XTR",
-            prices=prices,
-        )
-
-        bot.answer_callback_query(call.id)
-
-    elif call.data == "enter_code":
-        bot.answer_callback_query(call.id)
-
-        bot.send_message(
-            call.message.chat.id,
-            t(user_id, "send_code")
-        )
-
-    elif call.data == "stats":
-        bot.answer_callback_query(call.id)
-
-        if is_admin_user(user_id):
-            bot.send_message(
-                call.message.chat.id,
-                get_stats_text()
-            )
-
-    elif call.data == "gen_code_24h":
-        bot.answer_callback_query(call.id)
-
-        if is_admin_user(user_id):
-            bot.send_message(
-                call.message.chat.id,
-                f"🎟 Code 24h:\n{generate_code(24 * 60)}"
-            )
-
-    elif call.data == "gen_code_48h":
-        bot.answer_callback_query(call.id)
-
-        if is_admin_user(user_id):
-            bot.send_message(
-                call.message.chat.id,
-                f"🎟 Code 48h:\n{generate_code(48 * 60)}"
-            )
 
 @bot.pre_checkout_query_handler(func=lambda query: True)
 def pre_checkout(pre_checkout_query):
@@ -708,11 +666,12 @@ def code_handler(message):
 @bot.message_handler(func=lambda message: True)
 def fallback(message):
     if message.text and message.text.startswith("/"):
-        return  # не перехватываем команды
+        return
 
     ensure_user(message.from_user)
     user_id = message.from_user.id
     bot.send_message(message.chat.id, t(user_id, "fallback"), reply_markup=main_menu(user_id))
+
 
 # =========================
 # STARTUP
@@ -731,6 +690,6 @@ except Exception:
     print("WEBHOOK SET ERROR:")
     traceback.print_exc()
 
+
 if __name__ == "__main__":
-    # Local run only. Render uses: gunicorn bot:app
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", 10000)))
