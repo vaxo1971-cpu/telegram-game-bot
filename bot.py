@@ -443,14 +443,18 @@ def webhook():
         update = telebot.types.Update.de_json(json_str)
         print(update)
 
-        bot.process_new_updates([update])
+        if update.callback_query:
+            callback_handler(update.callback_query)
+        elif update.message and update.message.text == "/start":
+            start(update.message)
+        else:
+            bot.process_new_updates([update])
 
         return "OK", 200
     except Exception:
         print("WEBHOOK ERROR:")
         traceback.print_exc()
         return "ERROR", 500
-
 
 # =========================
 # BOT HANDLERS
