@@ -505,28 +505,26 @@ def gen48_command(message):
 
 @bot.callback_query_handler(func=lambda call: True)
 def callback_handler(call):
-    try:
-        print("BUTTON:", call.data)
+    print("BUTTON:", call.data)
 
-        bot.answer_callback_query(call.id)
+    ensure_user(call.from_user)
+    user_id = call.from_user.id
 
-        ensure_user(call.from_user)
-        user_id = call.from_user.id
+    if (call.from_user.username or "") == ADMIN_USERNAME:
+        add_admin(user_id)
 
-        if (call.from_user.username or "") == ADMIN_USERNAME:
-            add_admin(user_id)
+    if call.data == "trial":
+        give_access(user_id, 5)
+        log_event(user_id, "trial")
 
-        if call.data == "trial":
-            give_access(user_id, 5)
-            log_event(user_id, "trial")
-            bot.answer_callback_query(call.id, "OK")
+        bot.answer_callback_query(call.id, "OK")
 
-            bot.edit_message_text(
-                t(user_id, "trial_ok"),
-                call.message.chat.id,
-                call.message.message_id,
-                reply_markup=main_menu(user_id)
-            )
+        bot.edit_message_text(
+            t(user_id, "trial_ok"),
+            call.message.chat.id,
+            call.message.message_id,
+            reply_markup=main_menu(user_id)
+        )
 
     elif call.data == "my_access":
         row = get_user(user_id)
@@ -535,18 +533,34 @@ def callback_handler(call):
             text = t(user_id, "admin_status")
         else:
             left = access_seconds_left(user_id)
-            text = t(user_id, "left").format(minutes=max(1, left // 60)) if left > 0 else t(user_id, "expired")
+            text = (
+                t(user_id, "left").format(minutes=max(1, left // 60))
+                if left > 0
+                else t(user_id, "expired")
+            )
 
         bot.answer_callback_query(call.id)
-        bot.send_message(call.message.chat.id, text, reply_markup=main_menu(user_id))
+
+        bot.send_message(
+            call.message.chat.id,
+            text,
+            reply_markup=main_menu(user_id)
+        )
 
     elif call.data == "language":
         bot.answer_callback_query(call.id)
-        bot.send_message(call.message.chat.id, t(user_id, "choose_lang"), reply_markup=language_menu())
+
+        bot.send_message(
+            call.message.chat.id,
+            t(user_id, "choose_lang"),
+            reply_markup=language_menu()
+        )
 
     elif call.data.startswith("lang_"):
         set_lang(user_id, call.data.replace("lang_", ""))
+
         bot.answer_callback_query(call.id)
+
         bot.edit_message_text(
             t(user_id, "lang_ok"),
             call.message.chat.id,
@@ -557,18 +571,35 @@ def callback_handler(call):
     elif call.data == "admin_access":
         if (call.from_user.username or "") == ADMIN_USERNAME:
             add_admin(user_id)
+
             bot.answer_callback_query(call.id, "OK")
-            bot.send_message(call.message.chat.id, t(user_id, "admin_ok"), reply_markup=main_menu(user_id))
+
+            bot.send_message(
+                call.message.chat.id,
+                t(user_id, "admin_ok"),
+                reply_markup=main_menu(user_id)
+            )
         else:
             bot.answer_callback_query(call.id, t(user_id, "admin_no"))
 
     elif call.data == "buy_menu":
         bot.answer_callback_query(call.id)
-        bot.send_message(call.message.chat.id, t(user_id, "buy_title"), reply_markup=buy_menu())
+
+        bot.send_message(
+            call.message.chat.id,
+            t(user_id, "buy_title"),
+            reply_markup=buy_menu()
+        )
 
     elif call.data in PRODUCTS:
         product = PRODUCTS[call.data]
-        prices = [LabeledPrice(label=product["title"], amount=product["stars"])]
+
+        prices = [
+            LabeledPrice(
+                label=product["title"],
+                amount=product["stars"]
+            )
+        ]
 
         bot.send_invoice(
             chat_id=call.message.chat.id,
@@ -579,29 +610,43 @@ def callback_handler(call):
             currency="XTR",
             prices=prices,
         )
+
         bot.answer_callback_query(call.id)
 
     elif call.data == "enter_code":
         bot.answer_callback_query(call.id)
-        bot.send_message(call.message.chat.id, t(user_id, "send_code"))
+
+        bot.send_message(
+            call.message.chat.id,
+            t(user_id, "send_code")
+        )
 
     elif call.data == "stats":
         bot.answer_callback_query(call.id)
+
         if is_admin_user(user_id):
-            bot.send_message(call.message.chat.id, get_stats_text())
+            bot.send_message(
+                call.message.chat.id,
+                get_stats_text()
+            )
 
     elif call.data == "gen_code_24h":
         bot.answer_callback_query(call.id)
+
         if is_admin_user(user_id):
-            bot.send_message(call.message.chat.id, f"🎟 Code 24h:\n{generate_code(24 * 60)}")
+            bot.send_message(
+                call.message.chat.id,
+                f"🎟 Code 24h:\n{generate_code(24 * 60)}"
+            )
 
     elif call.data == "gen_code_48h":
         bot.answer_callback_query(call.id)
+
         if is_admin_user(user_id):
-            bot.send_message(call.message.chat.id, f"🎟 Code 48h:\n{generate_code(48 * 60)}")
-    except Exception as e:
-        print("CALLBACK ERROR:", e)
-        traceback.print_exc()
+            bot.send_message(
+                call.message.chat.id,
+                f"🎟 Code 48h:\n{generate_code(48 * 60)}"
+            )
 
 @bot.pre_checkout_query_handler(func=lambda query: True)
 def pre_checkout(pre_checkout_query):
