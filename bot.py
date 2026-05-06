@@ -448,7 +448,12 @@ def webhook():
         json_str = request.get_data().decode("utf-8")
         update = telebot.types.Update.de_json(json_str)
         print(update)
-        bot.process_new_updates([update])
+
+        if update.message and update.message.text and update.message.text.startswith("/start"):
+            start(update.message)
+        else:
+            bot.process_new_updates([update])
+
         return "OK", 200
     except Exception:
         print("WEBHOOK ERROR:")
