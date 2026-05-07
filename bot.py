@@ -15,7 +15,7 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 WEBAPP_URL = os.getenv("WEBAPP_URL", "https://aquamarine-strudel-14e0ed.netlify.app").strip()
-ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "vaxo1971").strip().lstrip("@")
+ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "vakho71").strip().lstrip("@")
 DB_PATH = os.getenv("DB_PATH", "bot.db").strip()
 
 if not BOT_TOKEN:
